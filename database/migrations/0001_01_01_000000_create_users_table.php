@@ -13,11 +13,28 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
+
+            $table->unsignedTinyInteger('role');
+
             $table->string('name');
             $table->string('email')->unique();
             $table->timestamp('email_verified_at')->nullable();
+
+            // Тут проблема с порядком миграций поэтому мы добаляем ссылку на таблицу organizations отдельной миграцией в конце
+            // $table->foreignId('organization_id')->nullable()->constrained('organizations')->nullOnDelete(); 
+            $table->unsignedBigInteger('organization_id')->nullable();
+
+            $table->date('birth_date');
+
             $table->string('password');
+            
+            $table->string('phone', 30)->nullable();
+            $table->string('avatar_path')->nullable();
+
             $table->rememberToken();
+
+            $table->softDeletes();
+
             $table->timestamps();
         });
 
