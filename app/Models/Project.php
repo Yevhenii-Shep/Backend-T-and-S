@@ -14,11 +14,14 @@ class Project extends Model
     const STATUS_PENGING = 0; // Типо в ожидании аудита
     const STATUS_ACTIVE = 1;
     const STATUS_DONE = 2;
+    const PROGRAM_TYPE_A = 1;
+    const PROGRAM_TYPE_B = 2;
 
     protected $table = 'projects';
 
     protected $fillable = [
         'name',
+        'slug',
         'team_id',
         'organization_id',
         'program_type',

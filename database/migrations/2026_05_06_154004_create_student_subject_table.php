@@ -19,7 +19,7 @@ return new class extends Migration
             // Связь с предметом
             $table->foreignId('subject_id')->constrained('subjects')->cascadeOnDelete();
 
-            $table->unsignedTinyInteger('grade')->nullable();
+            $table->decimal('grade', 3, 1)->nullable();
 
             $table->primary(['user_id', 'subject_id']);
         });

@@ -13,6 +13,7 @@ class Category extends Model
 
     protected $fillable = [
         'name',
+        'slug',
         'description',
     ];
 
@@ -25,7 +26,6 @@ class Category extends Model
     // Категории связаны с предметами (M:N через category_subject, не отдельная модель)
     public function subjects()
     {
-        return $this->belongsToMany(Subject::class, 'category_subject')
-            ->withTimestamps();
+        return $this->belongsToMany(Subject::class, 'category_subject');
     }
 }

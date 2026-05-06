@@ -9,6 +9,9 @@ class AuditEvent extends Model
 {
     use HasFactory;
 
+    const RESULT_ACCEPTED = 1;
+    const RESULT_DECLINED = 2;
+
     protected $table = 'audit_events';
 
     protected $fillable = [

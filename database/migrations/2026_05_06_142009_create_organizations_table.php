@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
 
             $table->string('name');
+            $table->string('slug')->unique();
             $table->string('logo_path')->nullable();
 
             $table->text('description')->nullable(); // большой текст

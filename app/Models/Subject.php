@@ -28,7 +28,6 @@ class Subject extends Model
     // Предмет относится к категориям M:N(через category_subject, не отдельная модель)
     public function categories()
     {
-        return $this->belongsToMany(Category::class, 'category_subject')
-            ->withTimestamps();
+        return $this->belongsToMany(Category::class, 'category_subject');
     }
 }

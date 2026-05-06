@@ -28,6 +28,7 @@ return new class extends Migration
         // Ключ (pivot всегда лучше делать составным)
         $table->primary(['team_id', 'user_id']);
 
+        $table->timestamps();
     });
 
 }

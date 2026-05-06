@@ -13,6 +13,7 @@ class Organization extends Model
 
     protected $fillable = [
         'name',
+        'slug',
         'logo_path',
         'description',
         'website_url',

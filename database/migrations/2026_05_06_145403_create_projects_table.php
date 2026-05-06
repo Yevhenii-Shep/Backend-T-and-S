@@ -15,6 +15,7 @@ return new class extends Migration
             $table->id();
 
             $table->string('name');
+            $table->string('slug')->unique();
 
             // Связь с командой (может быть NULL)
             $table->foreignId('team_id')->nullable()->constrained('teams')->nullOnDelete();

@@ -22,6 +22,8 @@ return new class extends Migration
             $table->unsignedTinyInteger('role');
 
             $table->primary(['user_id', 'audit_event_id']);
+
+            $table->timestamps();
         });
     }
 

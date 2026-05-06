@@ -6,6 +6,8 @@ use Illuminate\Database\Eloquent\Model;
 
 class AuditParticipant extends Model
 {
+    const ROLE_AUDITOR = 1;
+    const ROLE_CONTRIBUTOR = 2;
     protected $table = 'audit_participants';
 
     protected $fillable = [

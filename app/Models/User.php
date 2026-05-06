@@ -13,6 +13,12 @@ class User extends Authenticatable
     use HasFactory, Notifiable;
     use SoftDeletes;
 
+    const ROLE_ADMIN = 1;
+    const ROLE_STUDENT = 2;
+    const ROLE_ORGANIZATION_EMPLOYEE = 3;
+    const ROLE_ORGANIZATION_ADMIN = 4;
+    const ROLE_NTI_EMPLOYEE = 5;
+
     protected $table = 'users';
 
     protected $fillable = [
