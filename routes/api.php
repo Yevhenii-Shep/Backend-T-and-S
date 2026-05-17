@@ -11,8 +11,13 @@ Route::get('/user', function (Request $request) {
     return $request->user();
 })->middleware('auth:sanctum');
 
+
+// For test without login
+Route::apiResource('projects', ProjectController::class);
+
+
 Route::middleware('auth:sanctum')->group(function () {
-    Route::apiResource('projects', ProjectController::class);
+    // Route::apiResource('projects', ProjectController::class);
     Route::apiResource('documents', DocumentController::class);
     Route::apiResource('milestones', MilestoneController::class);
     Route::apiResource('audit-events', AuditEventController::class);

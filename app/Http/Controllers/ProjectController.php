@@ -9,6 +9,13 @@ use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
+
+    public function index(Request $request) {
+        $query = Project::query()->with(['team', 'organization', 'category']);
+        return response()->json($query->get());
+    }
+
+    /*
     public function index(Request $request)
     {
         $user = $request->user();
@@ -35,6 +42,7 @@ class ProjectController extends Controller
 
         return response()->json(collect());
     }
+    */
 
     public function store(Request $request)
     {
