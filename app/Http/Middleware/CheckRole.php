@@ -11,7 +11,11 @@ class CheckRole
     /**
      * Handle an incoming request.
      *
+     * Пропускает запрос, если $request->user()->role входит в переданные ID
+     * (пример в routes: middleware('role:'.User::ROLE_ADMIN)).
+     *
      * @param  Closure(Request): (Response)  $next
+     * @param  string  ...$roles  ID ролей (User::ROLE_ADMIN = 1, …)
      */
     public function handle(Request $request, Closure $next, ...$roles): Response
     {

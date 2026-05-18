@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use Hash;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\Organization;
@@ -18,6 +17,7 @@ class UserSeeder extends Seeder
         $apple = Organization::where('name', 'Apple')->first();
         $google = Organization::where('name', 'Google')->first();
 
+        // password — открытый текст; в User cast 'hashed' хеширует при сохранении
         // Admin
         User::create([
             'name'=> 'Super Admin',
@@ -25,7 +25,7 @@ class UserSeeder extends Seeder
             'email'=> 'admin@admin.com',
             'organization_id'=> null,
             'birth_date' => '1999-01-01',
-            'password' => Hash::make('password'),
+            'password' => 'password',
             'phone' => '+1111111',
             'avatar_path' => null,
         ]);
@@ -37,7 +37,7 @@ class UserSeeder extends Seeder
             'email'=> 'student1@test.com',
             'organization_id'=> null,
             'birth_date' => '2006-01-01',
-            'password' => Hash::make('password'),
+            'password' => 'password',
             'phone' => '+565787271',
             'avatar_path' => null,
         ]);
@@ -48,7 +48,7 @@ class UserSeeder extends Seeder
             'email'=> 'student2@test.com',
             'organization_id'=> null,
             'birth_date' => '2006-02-02',
-            'password' => Hash::make('password'),
+            'password' => 'password',
             'phone' => '+565787272',
             'avatar_path' => null,
         ]);
@@ -59,7 +59,7 @@ class UserSeeder extends Seeder
             'email'=> 'student3@test.com',
             'organization_id'=> null,
             'birth_date' => '2006-03-03',
-            'password' => Hash::make('password'),
+            'password' => 'password',
             'phone' => '+565787273',
             'avatar_path' => null,
         ]);
@@ -71,7 +71,7 @@ class UserSeeder extends Seeder
             'email'=> 'google_admin@gmail.com',
             'organization_id'=> $google->id,
             'birth_date' => '2002-03-11',
-            'password' => Hash::make('password'),
+            'password' => 'password',
             'phone' => '+222222',
             'avatar_path' => null,
         ]);
@@ -82,7 +82,7 @@ class UserSeeder extends Seeder
             'email'=> 'apple_employee@apple.com',
             'organization_id'=> $apple?->id,
             'birth_date' => '2000-01-01',
-            'password' => Hash::make('password'),
+            'password' => 'password',
             'phone' => '+368989138',
             'avatar_path' => null,
         ]);
@@ -94,7 +94,7 @@ class UserSeeder extends Seeder
             'email'=> 'livia@email.com',
             'organization_id'=> null,
             'birth_date' => '1998-04-10',
-            'password' => Hash::make('password'),
+            'password' => 'password',
             'phone' => '+344444',
             'avatar_path' => null,
         ]);

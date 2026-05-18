@@ -2,16 +2,19 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
+use Laravel\Sanctum\HasApiTokens;
 
-use Illuminate\Database\Eloquent\SoftDeletes;
-
+/**
+ * Пользователь. HasApiTokens — выдача Bearer-токенов для API (Sanctum).
+ */
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
-    use SoftDeletes;
+    // Sanctum: createToken() / currentAccessToken() для login и logout
+    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
 
     const ROLE_ADMIN = 1;
     const ROLE_STUDENT = 2;
@@ -36,9 +39,16 @@ class User extends Authenticatable
         'password',
     ];
 
-    protected $casts = [
-        'birth_date' => 'date',
-    ];
+    /**
+     * password: при create/update можно передавать открытый текст — Laravel захеширует сам.
+     */
+    protected function casts(): array
+    {
+        return [
+            'birth_date' => 'date',
+            'password' => 'hashed',
+        ];
+    }
 
     // Пользователь принадлежит организации(может и не приналдежать, то есть быть null) 1:N
     public function organization()

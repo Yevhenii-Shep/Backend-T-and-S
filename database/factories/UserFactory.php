@@ -14,6 +14,9 @@ class UserFactory extends Factory
 {
     /**
      * The current password being used by the factory.
+     *
+     * Пароль кешируется в static; при User с cast password => hashed
+     * предпочтительнее 'password' без Hash::make в definition (см. UserSeeder).
      */
     protected static ?string $password;
 

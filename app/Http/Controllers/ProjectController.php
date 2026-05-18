@@ -9,7 +9,7 @@ use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
-
+    // Список без фильтра по роли (для тестов). Рабочий вариант с auth — в блоке /* */ ниже.
     public function index(Request $request) {
         $query = Project::query()->with(['team', 'organization', 'category']);
         return response()->json($query->get());
