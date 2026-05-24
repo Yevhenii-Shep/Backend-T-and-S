@@ -5,10 +5,10 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\MilestoneController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\TeamController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
-// --- Аутентификация (Sanctum) ---
 
 // Публичный вход; throttle — защита от перебора пароля
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
@@ -33,4 +33,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('documents', DocumentController::class);
     Route::apiResource('milestones', MilestoneController::class);
     Route::apiResource('audit-events', AuditEventController::class);
+
+    Route::apiResource('teams', TeamController::class);
 });

@@ -44,7 +44,7 @@ class TeamSeeder extends Seeder
             'user_id' => $student3->id,
             'join_date' => now(),
             'leave_date' => null,
-            'is_leader' => 1,
+            'is_leader' => 0,
         ]);
 
         
