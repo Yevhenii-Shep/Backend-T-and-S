@@ -34,5 +34,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('milestones', MilestoneController::class);
     Route::apiResource('audit-events', AuditEventController::class);
 
-    Route::apiResource('teams', TeamController::class);
+    // Team logic
+    Route::apiResource('teams', TeamController::class); // base CRUD
+    Route::get('teams/{team}/invite-code', [TeamController::class, 'inviteCode']); // View invite-code
+    Route::post('/teams/{team}/regenerate-invite-code', [TeamController::class, 'regenerateInviteCode']); // Re-generate invite code
+    Route::post('teams/join', [TeamController::class,'join']); // Join team by invite code
 });

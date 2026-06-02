@@ -9,6 +9,8 @@ class Team extends Model
 {
     use HasFactory;
 
+    const MAX_PARTICIPANTS = 3;
+
     protected $table = 'teams';
 
     protected $fillable = [
@@ -16,6 +18,7 @@ class Team extends Model
         'slug',
         'description',
         'is_active',
+        'invite_code',
     ];
 
     protected $casts = [

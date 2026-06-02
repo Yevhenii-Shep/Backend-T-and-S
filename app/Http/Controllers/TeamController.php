@@ -4,18 +4,32 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Team;
+use App\Http\Resources\TeamResource;
 use App\Models\User;
 use App\Models\TeamUser;
 use App\Models\Project;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
+
 
 class TeamController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Team::query()->with('users');
+        $query = Team::query()
+            ->select(["id", "name", "description", "is_active"]);
 
-        return response()->json($query->get());
+        // фильтр по статусу
+        if ($request->filled('status')) {
+            match ($request->status) {
+                'active' => $query->where('is_active', true),
+                'inactive' => $query->where('is_active', false),
+                default => null,
+            };
+        }
+
+        $teams = $query->get();
+        return TeamResource::collection($teams);
     }
 
     public function store(Request $request)
@@ -85,6 +99,8 @@ class TeamController extends Controller
             'slug' => $data['slug'],
             'description' => $data['description'] ?? null,
             'is_active' => $isActive,
+
+            'invite_code' => strtoupper(Str::random(8)),
         ]);
 
         TeamUser::create([
@@ -95,20 +111,31 @@ class TeamController extends Controller
             'is_leader' => true,
         ]);
 
-        return response()->json(
-            $team->load('users'),
-            201
+        return new TeamResource(
+            $team->load('users')
         );
     }
 
     public function show(Request $request, Team $team)
     {
         abort_unless($this->canAccessTeam($request->user(), $team), 
-        403, 'Access denied');
-
-        return response()->json(
-            $team->load(['users', 'projects',])
+            403, 'Access denied'
         );
+
+        $team->load(['users', 'projects']);
+        return new TeamResource($team);
+    }
+
+    // Отдельный endpoint который показывет invite_code(только админу или участникам комадны)
+    public function inviteCode(Request $request, Team $team)
+    {
+        abort_unless($this->canManageTeam($request->user(), $team),
+            403, 'Access denied'
+        );
+
+        return response()->json([
+            'invite_code' => $team->invite_code,
+        ]);
     }
 
     public function update(Request $request, Team $team)
@@ -134,21 +161,92 @@ class TeamController extends Controller
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'slug' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('teams', 'slug')->ignore($team->id)],
             'description' => ['nullable', 'string'],
-
-            // Только admin может менять is_active
-            'is_active' => ['nullable', 'boolean'],
         ]);
-
-        // Student не может менять is_active(для этого существует удадение команды)
-        if ($user->role !== User::ROLE_ADMIN) {
-            unset($data['is_active']);
-        }
 
         $team->update($data);
 
-        return response()->json(
+        return new TeamResource(
             $team->load(['users', 'projects'])
         );
+    }
+
+    // Отдельный endppoint для ре-генерации invite_code 
+    public function regenerateInviteCode(Request $request, Team $team)
+    {
+        $user = $request->user();
+
+        // команда должна быть активной
+        abort_if(!$team->is_active,
+            422, 'Team is inactive'
+        );
+
+        // Только admin и student могут обновлять команды
+        abort_unless(in_array($user->role, [User::ROLE_ADMIN, User::ROLE_STUDENT], true),
+            403, 'Access denied'
+        );
+
+        // Проверка доступа к конкретной команде
+        abort_unless($this->canManageTeam($user, $team),
+            403, 'Access denied'
+        );
+
+        // генерация нового кода
+        $team->update([
+            'invite_code' => strtoupper(Str::random(8)),
+        ]);
+
+        return response()->json([
+            'message' => 'Invite code regenerated successfully',
+            'invite_code' => $team->invite_code,
+        ]);
+    }
+
+    // Endpoint для вступления в команду по invite_code
+    public function join(Request $request)
+    {
+        $user = $request->user();
+
+        abort_unless(in_array($user->role, [User::ROLE_STUDENT,], true),
+            403, 'Only students can join teams'
+        );
+
+        $data = $request->validate([
+            'invite_code' => ['required', 'string'],
+        ]);
+
+        $team = Team::where('invite_code', $data['invite_code'])
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        // Уже в этой же команде
+        abort_if(
+            $team->users()->where('users.id', $user->id)->exists(),
+            422, 'You are already in this team'
+        );
+
+        // В другой активной команде
+        abort_if($user->teams()->where('teams.is_active', true)->exists(),
+            422, 'You are already in another active team'
+        );
+
+        // Рроверка лимита участников в одной команде(4)
+        $currentMembersCount = $team->users()->count();
+        abort_if($currentMembersCount >= Team::MAX_PARTICIPANTS,
+            422, 'Team is already full'
+        );
+
+        TeamUser::create([
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'join_date' => now(),
+            'leave_date' => null,
+            'is_leader' => false,
+        ]);
+
+        return response()->json([
+            'message' => 'Joined team successfully',
+            'team' => new TeamResource($team->load('users'))
+        ]);
     }
 
     public function destroy(Request $request, Team $team)
