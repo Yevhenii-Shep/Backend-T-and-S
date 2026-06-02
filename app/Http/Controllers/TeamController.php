@@ -229,7 +229,7 @@ class TeamController extends Controller
             422, 'You are already in another active team'
         );
 
-        // Рроверка лимита участников в одной команде(4)
+        // Проверка лимита участников в одной команде(3)
         $currentMembersCount = $team->users()->count();
         abort_if($currentMembersCount >= Team::MAX_PARTICIPANTS,
             422, 'Team is already full'

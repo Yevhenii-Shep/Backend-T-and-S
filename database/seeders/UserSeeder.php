@@ -99,6 +99,19 @@ class UserSeeder extends Seeder
             'avatar_path' => null,
         ]);
 
+        // Deleted user
+        User::create([
+            'name'=> 'Deleted User',
+            'role' => User::ROLE_STUDENT,
+            'email'=> 'delted_user@email.com',
+            'organization_id'=> null,
+            'birth_date' => '1999-01-01',
+            'password' => 'password',
+            'phone' => '+000000',
+            'avatar_path' => null,
+            'deleted_at' => now()->addMicrosecond()
+        ]);
+
         // Студенты для теста создания команд
         User::create([
             'name'=> 'Team Leader',
