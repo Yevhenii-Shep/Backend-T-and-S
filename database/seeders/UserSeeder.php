@@ -98,5 +98,60 @@ class UserSeeder extends Seeder
             'phone' => '+344444',
             'avatar_path' => null,
         ]);
+
+        // Deleted user
+        User::create([
+            'name'=> 'Deleted User',
+            'role' => User::ROLE_STUDENT,
+            'email'=> 'delted_user@email.com',
+            'organization_id'=> null,
+            'birth_date' => '1999-01-01',
+            'password' => 'password',
+            'phone' => '+000000',
+            'avatar_path' => null,
+            'deleted_at' => now()->addMicrosecond()
+        ]);
+
+        // Студенты для теста создания команд
+        User::create([
+            'name'=> 'Team Leader',
+            'role' => User::ROLE_STUDENT,
+            'email'=> 'teamleader@test.com',
+            'organization_id'=> null,
+            'birth_date' => '2000-01-01',
+            'password' => 'password',
+            'phone' => '+1111111111',
+            'avatar_path' => null,
+        ]);
+        User::create([
+            'name'=> 'Team Member 1',
+            'role' => User::ROLE_STUDENT,
+            'email'=> 'teammember1@test.com',
+            'organization_id'=> null,
+            'birth_date' => '2000-01-01',
+            'password' => 'password',
+            'phone' => '+1111111111',
+            'avatar_path' => null,
+        ]);
+        User::create([
+            'name'=> 'Team Member 2',
+            'role' => User::ROLE_STUDENT,
+            'email'=> 'teammember2@test.com',
+            'organization_id'=> null,
+            'birth_date' => '2000-01-01',
+            'password' => 'password',
+            'phone' => '+1111111111',
+            'avatar_path' => null,
+        ]);
+        User::create([
+            'name'=> 'Team Member 3',
+            'role' => User::ROLE_STUDENT,
+            'email'=> 'teammember3@test.com',
+            'organization_id'=> null,
+            'birth_date' => '2000-01-01',
+            'password' => 'password',
+            'phone' => '+1111111111',
+            'avatar_path' => null,
+        ]);
     }
 }

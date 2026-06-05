@@ -20,6 +20,7 @@ class TeamSeeder extends Seeder
             'slug' => 'test-team',
             'description' => 'jfsdfjkasjahslfhalkfal',
             'is_active' => 1,
+            'invite_code' => 'TESTTEAM'
         ]);
 
         $student1 = User::where('email', 'student1@test.com')->first();
