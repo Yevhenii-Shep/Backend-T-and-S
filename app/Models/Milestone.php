@@ -24,10 +24,12 @@ class Milestone extends Model
         'status',
         'deadline',
         'description',
+        'is_active',
     ];
 
     protected $casts = [
         'deadline' => 'datetime',
+        'is_active' => 'boolean',
     ];
 
     // Этап принадлежит проекту 1:N

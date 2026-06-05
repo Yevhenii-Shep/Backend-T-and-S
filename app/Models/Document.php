@@ -16,6 +16,11 @@ class Document extends Model
         'name',
         'description',
         'file_path',
+        'is_active',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
     ];
 
     // Документ принадлежит проекту 1:N

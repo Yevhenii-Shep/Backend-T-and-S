@@ -20,26 +20,28 @@ class AuditEvent extends Model
         'main_auditor',
         'start_time',
         'end_time',
+        'is_active',
     ];
 
     protected $casts = [
         'start_time' => 'datetime',
         'end_time' => 'datetime',
+        'is_active' => 'boolean',
     ];
 
-    // Аудит относиться к конкретному проекту 1:N
+    // Аудит относится к конкретному проекту
     public function project()
     {
         return $this->belongsTo(Project::class);
     }
 
-    // Главный аудитор (1:N к User)
+    // Главный аудитор 
     public function mainAuditor()
     {
         return $this->belongsTo(User::class, 'main_auditor');
     }
 
-    // Участники аудита (M:N через audit_participants + отдельная модель AuditParticipant)
+    // Участники аудита 
     public function participants()
     {
         return $this->hasMany(AuditParticipant::class);

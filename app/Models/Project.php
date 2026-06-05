@@ -14,6 +14,7 @@ class Project extends Model
     const STATUS_PENGING = 0; // Типо в ожидании аудита
     const STATUS_ACTIVE = 1;
     const STATUS_DONE = 2;
+    const STATUS_INACTIVE = 3;
     const PROGRAM_TYPE_A = 1;
     const PROGRAM_TYPE_B = 2;
 

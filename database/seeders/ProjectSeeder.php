@@ -72,5 +72,19 @@ class ProjectSeeder extends Seeder
             'deadline' => now()->subMonth(),
         ]);
 
+        // Деактивированный проект (для проверки soft-delete через status).
+        Project::create([
+            'name' => 'Legacy CRM (archived)',
+            'slug' => 'legacy-crm-archived',
+            'team_id' => $team?->id,
+            'organization_id' => $apple?->id,
+            'program_type' => Project::PROGRAM_TYPE_B,
+            'mentor_from_nti' => $mentorNTI?->id,
+            'category_id' => $category1->id,
+            'mentor_from_organization' => $mentorApple?->id,
+            'status' => Project::STATUS_INACTIVE,
+            'description' => 'Archived project, hidden from API lists',
+            'deadline' => now()->subMonths(6),
+        ]);
     }
 }
