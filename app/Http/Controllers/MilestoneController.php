@@ -6,11 +6,18 @@ use App\Http\Controllers\Concerns\ChecksProjectAccess;
 use App\Models\Milestone;
 use App\Models\Project;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
+/**
+ * CRUD этапов проекта (удаление = is_active false).
+ */
 class MilestoneController extends Controller
 {
     use ChecksProjectAccess;
 
+    /**
+     * GET /api/milestones — список этапов (фильтр: project_id).
+     */
     public function index(Request $request)
     {
         $user = $request->user();
@@ -27,6 +34,9 @@ class MilestoneController extends Controller
         return response()->json($query->get());
     }
 
+    /**
+     * POST /api/milestones — создать этап.
+     */
     public function store(Request $request)
     {
         $user = $request->user();
@@ -36,7 +46,7 @@ class MilestoneController extends Controller
             'project_id' => ['required', 'integer', 'exists:projects,id'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'status' => ['required', 'integer', 'in:0,1,2,3'],
+            'status' => ['required', 'integer', Rule::in($this->milestoneStatuses())],
             'deadline' => ['nullable', 'date'],
         ]);
 
@@ -49,6 +59,9 @@ class MilestoneController extends Controller
         return response()->json($milestone->load('project'), 201);
     }
 
+    /**
+     * GET /api/milestones/{milestone} — один этап.
+     */
     public function show(Request $request, Milestone $milestone)
     {
         abort_unless($milestone->is_active, 404);
@@ -57,6 +70,9 @@ class MilestoneController extends Controller
         return response()->json($milestone->load('project'));
     }
 
+    /**
+     * PUT/PATCH /api/milestones/{milestone} — обновить этап.
+     */
     public function update(Request $request, Milestone $milestone)
     {
         $user = $request->user();
@@ -68,7 +84,7 @@ class MilestoneController extends Controller
             'project_id' => ['sometimes', 'required', 'integer', 'exists:projects,id'],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'status' => ['sometimes', 'required', 'integer', 'in:0,1,2,3'],
+            'status' => ['sometimes', 'required', 'integer', Rule::in($this->milestoneStatuses())],
             'deadline' => ['nullable', 'date'],
         ]);
 
@@ -82,6 +98,9 @@ class MilestoneController extends Controller
         return response()->json($milestone->load('project'));
     }
 
+    /**
+     * DELETE /api/milestones/{milestone} — деактивация (is_active = false).
+     */
     public function destroy(Request $request, Milestone $milestone)
     {
         $user = $request->user();
@@ -92,5 +111,16 @@ class MilestoneController extends Controller
         $milestone->update(['is_active' => false]);
 
         return response()->noContent();
+    }
+
+    /** Допустимые статусы этапа (константы Milestone). */
+    private function milestoneStatuses(): array
+    {
+        return [
+            Milestone::STATUS_PENDING,
+            Milestone::STATUS_IN_PROGRESS,
+            Milestone::STATUS_DONE,
+            Milestone::STATUS_FAILED,
+        ];
     }
 }

@@ -3,10 +3,12 @@
 use App\Http\Controllers\AuditEventController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\EvaluationController;
 use App\Http\Controllers\MilestoneController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\TeamController;
+use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -20,25 +22,28 @@ Route::get('/user', function (Request $request) {
 })->middleware('auth:sanctum');
 
 
-// For test without login
-// Route::apiResource('projects', ProjectController::class);
-
-
 // Все маршруты ниже требуют заголовок: Authorization: Bearer {token}
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+    Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('throttle:5,1');
 
+    Route::apiResource('users', UserController::class);
     Route::apiResource('projects', ProjectController::class);
     Route::apiResource('documents', DocumentController::class);
     Route::apiResource('milestones', MilestoneController::class);
+    Route::apiResource('evaluations', EvaluationController::class);
     Route::apiResource('audit-events', AuditEventController::class);
 
-    // Team logic
-    Route::apiResource('teams', TeamController::class); // base CRUD
-    Route::get('teams/{team}/invite-code', [TeamController::class, 'inviteCode']); // View invite-code
-    Route::post('/teams/{team}/regenerate-invite-code', [TeamController::class, 'regenerateInviteCode']); // Re-generate invite code
-    Route::post('teams/join', [TeamController::class,'join']); // Join team by invite code
+    // Участники аудита
+    Route::post('audit-events/{audit_event}/participants', [AuditEventController::class, 'storeParticipant']);
+    Route::delete('audit-events/{audit_event}/participants/{participantUser}', [AuditEventController::class, 'destroyParticipant']);
+
+    // Team logic (чужая зона)
+    Route::apiResource('teams', TeamController::class);
+    Route::get('teams/{team}/invite-code', [TeamController::class, 'inviteCode']);
+    Route::post('/teams/{team}/regenerate-invite-code', [TeamController::class, 'regenerateInviteCode']);
+    Route::post('teams/join', [TeamController::class, 'join']);
 
     Route::apiResource('subjects', SubjectController::class);
 });

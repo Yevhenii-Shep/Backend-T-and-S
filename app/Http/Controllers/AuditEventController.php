@@ -4,66 +4,60 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ChecksProjectAccess;
 use App\Models\AuditEvent;
+use App\Models\AuditParticipant;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
+/**
+ * CRUD аудитов и управление участниками аудита.
+ */
 class AuditEventController extends Controller
 {
     use ChecksProjectAccess;
 
+    /**
+     * GET /api/audit-events — список аудитов (фильтр: project_id).
+     */
     public function index(Request $request)
     {
         $user = $request->user();
-
         $query = AuditEvent::query()
-            ->with(['project', 'mainAuditor', 'participants.user'])
-            ->where('is_active', true);
+            ->with(['project', 'mainAuditor', 'participants.user']);
 
-        if (in_array($user->role, [User::ROLE_ADMIN, User::ROLE_ORGANIZATION_EMPLOYEE, User::ROLE_NTI_EMPLOYEE], true)) {
-            return response()->json($query->get());
+        $this->applyProjectChildVisibility($query, $user);
+
+        if ($request->filled('project_id')) {
+            $project = Project::findOrFail($request->integer('project_id'));
+            abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
+            $query->where('project_id', $project->id);
         }
 
-        if ($user->role === User::ROLE_ORGANIZATION_ADMIN) {
-            return response()->json(
-                $query->whereHas(
-                    'project',
-                    fn ($projects) => $projects
-                        ->where('organization_id', $user->organization_id)
-                        ->where('status', '!=', Project::STATUS_INACTIVE)
-                )->get()
-            );
-        }
-
-        if ($user->role === User::ROLE_STUDENT) {
-            return response()->json(
-                $query->whereHas(
-                    'project',
-                    fn ($projects) => $projects
-                        ->where('status', '!=', Project::STATUS_INACTIVE)
-                        ->whereHas('team.users', fn ($teamUsers) => $teamUsers->where('users.id', $user->id))
-                )->get()
-            );
-        }
-
-        return response()->json(collect());
+        return response()->json($query->get());
     }
 
+    /**
+     * POST /api/audit-events — создать аудит для проекта.
+     * Не-admin: только будущие даты, без result. Admin: может задним числом, result — если аудит уже завершён.
+     */
     public function store(Request $request)
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
 
-        $data = $request->validate([
-            'project_id' => ['required', 'integer', 'exists:projects,id'],
-            'result' => ['nullable', 'integer', 'in:1,2'],
-            'main_auditor' => ['required', 'integer', 'exists:users,id'],
-            'start_time' => ['required', 'date'],
-            'end_time' => ['required', 'date', 'after:start_time'],
-        ]);
+        $data = $request->validate($this->storeRules($user));
 
         $project = Project::findOrFail($data['project_id']);
         abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
+        $this->assertValidAuditor($data['main_auditor']);
+        $this->assertScheduleOnCreate($user, $data);
+
+        if (!$this->isAdmin($user)) {
+            unset($data['result']);
+        }
 
         $data['is_active'] = true;
         $auditEvent = AuditEvent::create($data);
@@ -74,6 +68,9 @@ class AuditEventController extends Controller
         );
     }
 
+    /**
+     * GET /api/audit-events/{audit_event} — один аудит с участниками.
+     */
     public function show(Request $request, AuditEvent $auditEvent)
     {
         abort_unless($auditEvent->is_active, 404);
@@ -84,6 +81,10 @@ class AuditEventController extends Controller
         );
     }
 
+    /**
+     * PUT/PATCH /api/audit-events/{audit_event} — обновить аудит.
+     * result — только после end_time. Не-admin не может переносить аудит в прошлое.
+     */
     public function update(Request $request, AuditEvent $auditEvent)
     {
         $user = $request->user();
@@ -91,17 +92,25 @@ class AuditEventController extends Controller
         abort_unless($auditEvent->is_active, 404);
         abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
 
-        $data = $request->validate([
-            'project_id' => ['sometimes', 'required', 'integer', 'exists:projects,id'],
-            'result' => ['nullable', 'integer', 'in:1,2'],
-            'main_auditor' => ['sometimes', 'required', 'integer', 'exists:users,id'],
-            'start_time' => ['sometimes', 'required', 'date'],
-            'end_time' => ['sometimes', 'required', 'date', 'after:start_time'],
-        ]);
+        $data = $request->validate($this->updateRules($user));
+
+        $startTime = $data['start_time'] ?? $auditEvent->start_time;
+        $endTime = $data['end_time'] ?? $auditEvent->end_time;
+
+        $this->assertEndAfterStart($startTime, $endTime);
+        $this->assertScheduleOnUpdate($user, $data, $auditEvent);
+
+        if (array_key_exists('result', $data) && $data['result'] !== null) {
+            $this->assertResultOnlyAfterEnd($endTime);
+        }
 
         if (isset($data['project_id'])) {
             $project = Project::findOrFail($data['project_id']);
             abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
+        }
+
+        if (isset($data['main_auditor'])) {
+            $this->assertValidAuditor($data['main_auditor']);
         }
 
         $auditEvent->update($data);
@@ -111,6 +120,9 @@ class AuditEventController extends Controller
         );
     }
 
+    /**
+     * DELETE /api/audit-events/{audit_event} — деактивация (is_active = false).
+     */
     public function destroy(Request $request, AuditEvent $auditEvent)
     {
         $user = $request->user();
@@ -119,6 +131,69 @@ class AuditEventController extends Controller
         abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
 
         $auditEvent->update(['is_active' => false]);
+
+        return response()->noContent();
+    }
+
+    /**
+     * POST /api/audit-events/{audit_event}/participants — добавить участника аудита.
+     */
+    public function storeParticipant(Request $request, AuditEvent $auditEvent)
+    {
+        $user = $request->user();
+        abort_unless($this->canModifyResources($user), 403, 'Access denied');
+        abort_unless($auditEvent->is_active, 404);
+        abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
+
+        $data = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+            'role' => ['required', 'integer', Rule::in([AuditParticipant::ROLE_AUDITOR, AuditParticipant::ROLE_CONTRIBUTOR])],
+        ]);
+
+        $exists = AuditParticipant::query()
+            ->where('audit_event_id', $auditEvent->id)
+            ->where('user_id', $data['user_id'])
+            ->exists();
+
+        if ($exists) {
+            throw ValidationException::withMessages([
+                'user_id' => ['User is already a participant of this audit.'],
+            ]);
+        }
+
+        // Аудитором может быть только пользователь с ролью аудитора.
+        if ($data['role'] === AuditParticipant::ROLE_AUDITOR) {
+            $this->assertValidAuditor($data['user_id'], 'user_id');
+        }
+
+        $participant = AuditParticipant::create([
+            'user_id' => $data['user_id'],
+            'audit_event_id' => $auditEvent->id,
+            'role' => $data['role'],
+        ]);
+
+        return response()->json(
+            $participant->load('user'),
+            201
+        );
+    }
+
+    /**
+     * DELETE /api/audit-events/{audit_event}/participants/{participantUser} — убрать участника.
+     */
+    public function destroyParticipant(Request $request, AuditEvent $auditEvent, User $participantUser)
+    {
+        $user = $request->user();
+        abort_unless($this->canModifyResources($user), 403, 'Access denied');
+        abort_unless($auditEvent->is_active, 404);
+        abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
+
+        $deleted = AuditParticipant::query()
+            ->where('audit_event_id', $auditEvent->id)
+            ->where('user_id', $participantUser->id)
+            ->delete();
+
+        abort_unless($deleted, 404);
 
         return response()->noContent();
     }
@@ -136,5 +211,124 @@ class AuditEventController extends Controller
         }
 
         return $this->canAccessProject($user, $project);
+    }
+
+    /** Пользователь с ролью аудитора (admin, org, NTI). */
+    private function assertValidAuditor(int $userId, string $field = 'main_auditor'): void
+    {
+        $auditor = User::find($userId);
+
+        if (!$auditor || !in_array($auditor->role, $this->auditorRoleIds(), true)) {
+            throw ValidationException::withMessages([
+                $field => ['Invalid auditor role.'],
+            ]);
+        }
+    }
+
+    /** Только super admin может задавать прошлые даты и result при создании. */
+    private function isAdmin(User $user): bool
+    {
+        return $user->role === User::ROLE_ADMIN;
+    }
+
+    /** Правила валидации при создании аудита. */
+    private function storeRules(User $user): array
+    {
+        $rules = [
+            'project_id' => ['required', 'integer', 'exists:projects,id'],
+            'main_auditor' => ['required', 'integer', 'exists:users,id'],
+            'start_time' => ['required', 'date'],
+            'end_time' => ['required', 'date', 'after:start_time'],
+        ];
+
+        if ($this->isAdmin($user)) {
+            $rules['result'] = ['nullable', 'integer', Rule::in([AuditEvent::RESULT_ACCEPTED, AuditEvent::RESULT_DECLINED])];
+        } else {
+            $rules['start_time'][] = 'after:now';
+            $rules['result'] = ['prohibited'];
+        }
+
+        return $rules;
+    }
+
+    /** Правила валидации при обновлении аудита. */
+    private function updateRules(User $user): array
+    {
+        $rules = [
+            'project_id' => ['sometimes', 'required', 'integer', 'exists:projects,id'],
+            'result' => ['nullable', 'integer', Rule::in([AuditEvent::RESULT_ACCEPTED, AuditEvent::RESULT_DECLINED])],
+            'main_auditor' => ['sometimes', 'required', 'integer', 'exists:users,id'],
+            'start_time' => ['sometimes', 'required', 'date'],
+            'end_time' => ['sometimes', 'required', 'date'],
+        ];
+
+        if (!$this->isAdmin($user)) {
+            $rules['start_time'][] = 'after:now';
+            // Нельзя сдвинуть end_time в прошлое, чтобы досрочно выставить result.
+            $rules['end_time'][] = 'after:now';
+        }
+
+        return $rules;
+    }
+
+    /** Не-admin: только будущее. Admin + result: end_time уже в прошлом. */
+    private function assertScheduleOnCreate(User $user, array $data): void
+    {
+        if (!$this->isAdmin($user)) {
+            $this->assertStartInFuture($data['start_time']);
+
+            return;
+        }
+
+        if (isset($data['result']) && $data['result'] !== null) {
+            $this->assertResultOnlyAfterEnd($data['end_time']);
+        }
+    }
+
+    /** Не-admin не может сдвинуть start_time в прошлое. */
+    private function assertScheduleOnUpdate(User $user, array $data, AuditEvent $auditEvent): void
+    {
+        if ($this->isAdmin($user)) {
+            return;
+        }
+
+        if (isset($data['start_time'])) {
+            $this->assertStartInFuture($data['start_time']);
+        }
+
+        // Уже начавшийся аудит: нельзя менять start_time (end_time можно продлить).
+        if ($auditEvent->start_time->lte(now()) && isset($data['start_time'])) {
+            throw ValidationException::withMessages([
+                'start_time' => ['Cannot change start time after the audit has begun.'],
+            ]);
+        }
+    }
+
+    private function assertStartInFuture(mixed $startTime): void
+    {
+        if (Carbon::parse($startTime)->lte(now())) {
+            throw ValidationException::withMessages([
+                'start_time' => ['Audit must be scheduled in the future.'],
+            ]);
+        }
+    }
+
+    private function assertEndAfterStart(mixed $startTime, mixed $endTime): void
+    {
+        if (Carbon::parse($endTime)->lte(Carbon::parse($startTime))) {
+            throw ValidationException::withMessages([
+                'end_time' => ['The end time must be after start time.'],
+            ]);
+        }
+    }
+
+    /** result допустим только когда аудит по расписанию уже завершён. */
+    private function assertResultOnlyAfterEnd(mixed $endTime): void
+    {
+        if (Carbon::parse($endTime)->gt(now())) {
+            throw ValidationException::withMessages([
+                'result' => ['Result can only be set after the audit has ended.'],
+            ]);
+        }
     }
 }

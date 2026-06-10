@@ -5,15 +5,16 @@ namespace App\Http\Controllers;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Аутентификация API через Laravel Sanctum (Bearer-токен).
+ * Вход, выход и профиль текущего пользователя (Sanctum Bearer-токен).
  */
 class AuthController extends Controller
 {
     /**
-     * Вход: email + password. При успехе — Sanctum-токен и пользователь с организацией.
+     * POST /api/login — выдаёт токен и данные пользователя.
      */
     public function login(Request $request): JsonResponse
     {
@@ -29,7 +30,7 @@ class AuthController extends Controller
         }
 
         $user = $request->user();
-        // Токен для заголовка Authorization: Bearer {token}
+
         $token = $user->createToken('api')->plainTextToken;
 
         return response()->json([
@@ -39,7 +40,7 @@ class AuthController extends Controller
     }
 
     /**
-     * Выход: удаляет только текущий токен (другие сессии/устройства не затрагиваются).
+     * POST /api/logout — удаляет только текущий токен.
      */
     public function logout(Request $request): JsonResponse
     {
@@ -51,12 +52,38 @@ class AuthController extends Controller
     }
 
     /**
-     * Текущий авторизованный пользователь (роль, organization_id и т.д.).
+     * GET /api/me — текущий авторизованный пользователь.
      */
     public function me(Request $request): JsonResponse
     {
         return response()->json(
             $request->user()->load('organization')
         );
+    }
+
+    /**
+     * POST /api/change-password — смена пароля (нужен текущий пароль).
+     * Throttle на маршруте — защита от перебора current_password.
+     */
+    public function changePassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user = $request->user();
+
+        if (!Hash::check($data['current_password'], $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['Invalid password.'],
+            ]);
+        }
+
+        $user->update(['password' => $data['password']]);
+
+        return response()->json([
+            'message' => 'Password updated.',
+        ]);
     }
 }
