@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\AuditEventController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\EvaluationController;
 use App\Http\Controllers\MilestoneController;
+use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\TeamController;
@@ -49,10 +51,17 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('audit-events/{audit_event}/participants/{participantUser}', [AuditEventController::class, 'destroyParticipant']);
 
     // Team logic (чужая зона)
-    Route::apiResource('teams', TeamController::class);
-    Route::get('teams/{team}/invite-code', [TeamController::class, 'inviteCode']);
-    Route::post('/teams/{team}/regenerate-invite-code', [TeamController::class, 'regenerateInviteCode']);
-    Route::post('teams/join', [TeamController::class, 'join']);
+    Route::apiResource('teams', TeamController::class); // CRUD
+    Route::get('teams/{team}/invite-code', [TeamController::class, 'inviteCode']); // показать invite code
+    Route::post('/teams/{team}/regenerate-invite-code', [TeamController::class, 'regenerateInviteCode']); // сменить invite code
+    Route::post('teams/join', [TeamController::class, 'join']); // встпуить в команду зная invite code
 
     Route::apiResource('subjects', SubjectController::class);
+
+    Route::apiResource('categories', CategoryController::class);
+
+    Route::apiResource('organizations', OrganizationController::class); // CRUD
+    Route::post('organizations/{organization}/change-admin', [OrganizationController::class, "changeOrganizationAdmin"]); // поменять админа орги
+    Route::post('organizations/{organization}/add-employee', [OrganizationController::class, "addEmployee"]); // добавить сотркдника в оргу
+    Route::post('organizations/{organization}/remove-employee', [OrganizationController::class, "removeEmployee"]); // удалить сотрудника из орги
 });
