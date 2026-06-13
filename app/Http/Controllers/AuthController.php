@@ -90,9 +90,23 @@ class AuthController extends Controller
      */
     public function me(Request $request): JsonResponse
     {
-        return response()->json(
-            $request->user()->load('organization')
-        );
+        $user = $request->user()->load('organization');
+
+        $activeTeam = $user->teams()
+            ->where('teams.is_active', true)
+            ->first();
+
+        return response()->json([
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'role' => $user->role,
+            'organization' => $user->organization,
+
+            // TEAMS
+            'active_team_id' => $activeTeam?->id,
+            'has_active_team' => $activeTeam !== null,
+        ]);
     }
 
     /**
