@@ -75,6 +75,10 @@ class ProjectController extends Controller
             $data['organization_id'] = $user->organization_id;
         }
 
+        if ($user->role === User::ROLE_ORGANIZATION_EMPLOYEE) {
+            $data['organization_id'] = $user->organization_id;
+        }
+
         $this->assertValidMentors($data);
 
         $project = Project::create($data);
@@ -97,9 +101,9 @@ class ProjectController extends Controller
                 'team',
                 'organization',
                 'category',
-                'documents' => fn ($query) => $query->where('is_active', true),
-                'milestones' => fn ($query) => $query->where('is_active', true),
-                'auditEvents' => fn ($query) => $query->where('is_active', true),
+                'documents',
+                'milestones',
+                'auditEvents',
                 'evaluations.evaluator',
             ])
         );
@@ -132,6 +136,10 @@ class ProjectController extends Controller
             $data['organization_id'] = $user->organization_id;
         }
 
+        if ($user->role === User::ROLE_ORGANIZATION_EMPLOYEE) {
+            $data['organization_id'] = $user->organization_id;
+        }
+
         $merged = array_merge($project->only([
             'mentor_from_nti',
             'mentor_from_organization',
@@ -147,9 +155,9 @@ class ProjectController extends Controller
                 'team',
                 'organization',
                 'category',
-                'documents' => fn ($query) => $query->where('is_active', true),
-                'milestones' => fn ($query) => $query->where('is_active', true),
-                'auditEvents' => fn ($query) => $query->where('is_active', true),
+                'documents',
+                'milestones',
+                'auditEvents',
                 'evaluations.evaluator',
             ])
         );

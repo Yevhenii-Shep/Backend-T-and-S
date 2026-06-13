@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AuditEvent extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     const RESULT_ACCEPTED = 1;
     const RESULT_DECLINED = 2;
@@ -20,13 +21,11 @@ class AuditEvent extends Model
         'main_auditor',
         'start_time',
         'end_time',
-        'is_active',
     ];
 
     protected $casts = [
         'start_time' => 'datetime',
         'end_time' => 'datetime',
-        'is_active' => 'boolean',
     ];
 
     // Аудит относится к конкретному проекту
@@ -35,13 +34,13 @@ class AuditEvent extends Model
         return $this->belongsTo(Project::class);
     }
 
-    // Главный аудитор 
+    // Главный аудитор
     public function mainAuditor()
     {
         return $this->belongsTo(User::class, 'main_auditor');
     }
 
-    // Участники аудита 
+    // Участники аудита
     public function participants()
     {
         return $this->hasMany(AuditParticipant::class);

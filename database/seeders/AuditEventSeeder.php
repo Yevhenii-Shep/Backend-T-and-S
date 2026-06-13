@@ -39,7 +39,6 @@ class AuditEventSeeder extends Seeder
             'main_auditor' => $mentorApple->id,
             'start_time' => now()->addMonths(2),
             'end_time' => now()->addMonths(2)->addHours(2),
-            'is_active' => true,
         ]);
 
         AuditParticipant::create([
@@ -64,7 +63,6 @@ class AuditEventSeeder extends Seeder
             'main_auditor' => $mentorGoogle->id,
             'start_time' => now()->addMonths(3),
             'end_time' => now()->addMonths(3)->addHours(3),
-            'is_active' => true,
         ]);
 
         AuditParticipant::create([
@@ -94,7 +92,6 @@ class AuditEventSeeder extends Seeder
             'main_auditor' => $mentorGoogle->id,
             'start_time' => now()->addMonths(4),
             'end_time' => now()->addMonths(4)->addHours(4),
-            'is_active' => true,
         ]);
 
         AuditParticipant::create([

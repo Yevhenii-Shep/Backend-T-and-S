@@ -6,14 +6,20 @@ use App\Http\Controllers\Concerns\ChecksProjectAccess;
 use App\Models\Document;
 use App\Models\Project;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rules\File;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
- * CRUD документов проекта (удаление = is_active false).
+ * CRUD документов проекта (удаление = soft delete).
+ * Загрузка файла: multipart/form-data, поле file.
  */
 class DocumentController extends Controller
 {
     use ChecksProjectAccess;
+
+    private const DOCUMENT_DISK = 'public';
 
     /**
      * GET /api/documents — список документов (фильтр: project_id).
@@ -35,7 +41,7 @@ class DocumentController extends Controller
     }
 
     /**
-     * POST /api/documents — добавить документ к проекту.
+     * POST /api/documents — загрузить документ к проекту (multipart: file, project_id, name?, description?).
      */
     public function store(Request $request)
     {
@@ -46,15 +52,18 @@ class DocumentController extends Controller
             'project_id' => ['required', 'integer', 'exists:projects,id'],
             'name' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'file_path' => ['required', 'string', 'max:500'],
+            'file' => ['required', 'file', $this->documentFileRule()],
         ]);
 
         $project = Project::findOrFail($data['project_id']);
         abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
-        $this->assertSafeFilePath($data['file_path']);
 
-        $data['is_active'] = true;
-        $document = Document::create($data);
+        $document = Document::create([
+            'project_id' => $project->id,
+            'name' => $data['name'] ?? $data['file']->getClientOriginalName(),
+            'description' => $data['description'] ?? null,
+            'file_path' => $this->storeUploadedFile($data['file'], $project->id),
+        ]);
 
         return response()->json($document->load('project'), 201);
     }
@@ -64,36 +73,44 @@ class DocumentController extends Controller
      */
     public function show(Request $request, Document $document)
     {
-        abort_unless($document->is_active, 404);
         abort_unless($this->canAccessProject($request->user(), $document->project), 403, 'Access denied');
 
         return response()->json($document->load('project'));
     }
 
     /**
-     * PUT/PATCH /api/documents/{document} — обновить метаданные документа.
+     * GET /api/documents/{document}/download — скачать файл документа.
+     */
+    public function download(Request $request, Document $document): StreamedResponse
+    {
+        abort_unless($this->canAccessProject($request->user(), $document->project), 403, 'Access denied');
+        abort_unless(Storage::disk(self::DOCUMENT_DISK)->exists($document->file_path), 404);
+
+        return Storage::disk(self::DOCUMENT_DISK)->download(
+            $document->file_path,
+            basename($document->file_path)
+        );
+    }
+
+    /**
+     * PUT/PATCH /api/documents/{document} — обновить метаданные; опционально новый file.
      */
     public function update(Request $request, Document $document)
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($document->is_active, 404);
         abort_unless($this->canAccessProject($user, $document->project), 403, 'Access denied');
 
         $data = $request->validate([
-            'project_id' => ['sometimes', 'required', 'integer', 'exists:projects,id'],
             'name' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'file_path' => ['sometimes', 'required', 'string', 'max:500'],
+            'file' => ['sometimes', 'required', 'file', $this->documentFileRule()],
         ]);
 
-        if (isset($data['project_id'])) {
-            $project = Project::findOrFail($data['project_id']);
-            abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
-        }
-
-        if (isset($data['file_path'])) {
-            $this->assertSafeFilePath($data['file_path']);
+        if (isset($data['file'])) {
+            $this->deleteStoredFile($document->file_path);
+            $data['file_path'] = $this->storeUploadedFile($data['file'], $document->project_id);
+            unset($data['file']);
         }
 
         $document->update($data);
@@ -102,27 +119,37 @@ class DocumentController extends Controller
     }
 
     /**
-     * DELETE /api/documents/{document} — деактивация (is_active = false).
+     * DELETE /api/documents/{document} — soft delete и удаление файла с диска.
      */
     public function destroy(Request $request, Document $document)
     {
         $user = $request->user();
         abort_unless($this->canDeactivateResources($user), 403, 'Access denied');
-        abort_unless($document->is_active, 404);
-        abort_unless($this->canAccessProject($user, $document->project), 403, 'Access denied');
+        abort_unless($this->canManageProject($user, $document->project), 403, 'Access denied');
 
-        $document->update(['is_active' => false]);
+        $this->deleteStoredFile($document->file_path);
+        $document->delete();
 
         return response()->noContent();
     }
 
-    /** Запрет path traversal в file_path (.., абсолютные пути). */
-    private function assertSafeFilePath(string $filePath): void
+    private function documentFileRule(): File
     {
-        if (str_contains($filePath, '..') || str_starts_with($filePath, '/') || str_starts_with($filePath, '\\')) {
-            throw ValidationException::withMessages([
-                'file_path' => ['Invalid file path.'],
-            ]);
+        return File::types([
+            'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+            'txt', 'csv', 'svg', 'png', 'jpg', 'jpeg', 'zip', 'sql',
+        ])->max(10 * 1024);
+    }
+
+    private function storeUploadedFile(UploadedFile $file, int $projectId): string
+    {
+        return $file->store('documents/'.$projectId, self::DOCUMENT_DISK);
+    }
+
+    private function deleteStoredFile(?string $path): void
+    {
+        if ($path && Storage::disk(self::DOCUMENT_DISK)->exists($path)) {
+            Storage::disk(self::DOCUMENT_DISK)->delete($path);
         }
     }
 }

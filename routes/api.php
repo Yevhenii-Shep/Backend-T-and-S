@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Route;
 
 // Публичный вход; throttle — защита от перебора пароля
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
 
 // Текущий пользователь по Bearer-токену (дублирует /me, оставлен для совместимости)
 Route::get('/user', function (Request $request) {
@@ -29,7 +30,15 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('throttle:5,1');
 
     Route::apiResource('users', UserController::class);
+
+    Route::get('users/{user}/subjects', [UserController::class, 'indexSubjects']);
+    Route::post('users/{user}/subjects', [UserController::class, 'storeSubject']);
+    Route::patch('users/{user}/subjects/{subject}', [UserController::class, 'updateSubject']);
+    Route::delete('users/{user}/subjects/{subject}', [UserController::class, 'destroySubject']);
+
     Route::apiResource('projects', ProjectController::class);
+
+    Route::get('documents/{document}/download', [DocumentController::class, 'download']);
     Route::apiResource('documents', DocumentController::class);
     Route::apiResource('milestones', MilestoneController::class);
     Route::apiResource('evaluations', EvaluationController::class);

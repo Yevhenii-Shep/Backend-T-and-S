@@ -9,7 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 /**
- * CRUD этапов проекта (удаление = is_active false).
+ * CRUD этапов проекта (удаление = soft delete).
  */
 class MilestoneController extends Controller
 {
@@ -53,7 +53,6 @@ class MilestoneController extends Controller
         $project = Project::findOrFail($data['project_id']);
         abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
 
-        $data['is_active'] = true;
         $milestone = Milestone::create($data);
 
         return response()->json($milestone->load('project'), 201);
@@ -64,7 +63,6 @@ class MilestoneController extends Controller
      */
     public function show(Request $request, Milestone $milestone)
     {
-        abort_unless($milestone->is_active, 404);
         abort_unless($this->canAccessProject($request->user(), $milestone->project), 403, 'Access denied');
 
         return response()->json($milestone->load('project'));
@@ -77,21 +75,14 @@ class MilestoneController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($milestone->is_active, 404);
         abort_unless($this->canAccessProject($user, $milestone->project), 403, 'Access denied');
 
         $data = $request->validate([
-            'project_id' => ['sometimes', 'required', 'integer', 'exists:projects,id'],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'status' => ['sometimes', 'required', 'integer', Rule::in($this->milestoneStatuses())],
             'deadline' => ['nullable', 'date'],
         ]);
-
-        if (isset($data['project_id'])) {
-            $project = Project::findOrFail($data['project_id']);
-            abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
-        }
 
         $milestone->update($data);
 
@@ -99,16 +90,15 @@ class MilestoneController extends Controller
     }
 
     /**
-     * DELETE /api/milestones/{milestone} — деактивация (is_active = false).
+     * DELETE /api/milestones/{milestone} — soft delete.
      */
     public function destroy(Request $request, Milestone $milestone)
     {
         $user = $request->user();
         abort_unless($this->canDeactivateResources($user), 403, 'Access denied');
-        abort_unless($milestone->is_active, 404);
-        abort_unless($this->canAccessProject($user, $milestone->project), 403, 'Access denied');
+        abort_unless($this->canManageProject($user, $milestone->project), 403, 'Access denied');
 
-        $milestone->update(['is_active' => false]);
+        $milestone->delete();
 
         return response()->noContent();
     }

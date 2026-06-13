@@ -52,14 +52,13 @@ class AuditEventController extends Controller
 
         $project = Project::findOrFail($data['project_id']);
         abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
-        $this->assertValidAuditor($data['main_auditor']);
+        $this->assertAuditorBelongsToProject($data['main_auditor'], $project);
         $this->assertScheduleOnCreate($user, $data);
 
         if (!$this->isAdmin($user)) {
             unset($data['result']);
         }
 
-        $data['is_active'] = true;
         $auditEvent = AuditEvent::create($data);
 
         return response()->json(
@@ -73,7 +72,6 @@ class AuditEventController extends Controller
      */
     public function show(Request $request, AuditEvent $auditEvent)
     {
-        abort_unless($auditEvent->is_active, 404);
         abort_unless($this->canAccessAudit($request->user(), $auditEvent), 403, 'Access denied');
 
         return response()->json(
@@ -89,7 +87,6 @@ class AuditEventController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($auditEvent->is_active, 404);
         abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
 
         $data = $request->validate($this->updateRules($user));
@@ -104,13 +101,8 @@ class AuditEventController extends Controller
             $this->assertResultOnlyAfterEnd($endTime);
         }
 
-        if (isset($data['project_id'])) {
-            $project = Project::findOrFail($data['project_id']);
-            abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
-        }
-
         if (isset($data['main_auditor'])) {
-            $this->assertValidAuditor($data['main_auditor']);
+            $this->assertAuditorBelongsToProject($data['main_auditor'], $auditEvent->project, 'main_auditor');
         }
 
         $auditEvent->update($data);
@@ -121,16 +113,15 @@ class AuditEventController extends Controller
     }
 
     /**
-     * DELETE /api/audit-events/{audit_event} — деактивация (is_active = false).
+     * DELETE /api/audit-events/{audit_event} — soft delete.
      */
     public function destroy(Request $request, AuditEvent $auditEvent)
     {
         $user = $request->user();
         abort_unless($this->canDeactivateResources($user), 403, 'Access denied');
-        abort_unless($auditEvent->is_active, 404);
-        abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
+        abort_unless($auditEvent->project && $this->canManageProject($user, $auditEvent->project), 403, 'Access denied');
 
-        $auditEvent->update(['is_active' => false]);
+        $auditEvent->delete();
 
         return response()->noContent();
     }
@@ -142,7 +133,6 @@ class AuditEventController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($auditEvent->is_active, 404);
         abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
 
         $data = $request->validate([
@@ -161,9 +151,11 @@ class AuditEventController extends Controller
             ]);
         }
 
-        // Аудитором может быть только пользователь с ролью аудитора.
+        // Аудитором может быть только пользователь с ролью аудитора из org проекта (или admin/NTI).
         if ($data['role'] === AuditParticipant::ROLE_AUDITOR) {
-            $this->assertValidAuditor($data['user_id'], 'user_id');
+            $this->assertAuditorBelongsToProject($data['user_id'], $auditEvent->project, 'user_id');
+        } else {
+            $this->assertContributorBelongsToProject($data['user_id'], $auditEvent->project, 'user_id');
         }
 
         $participant = AuditParticipant::create([
@@ -185,7 +177,6 @@ class AuditEventController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($auditEvent->is_active, 404);
         abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
 
         $deleted = AuditParticipant::query()
@@ -200,10 +191,6 @@ class AuditEventController extends Controller
 
     private function canAccessAudit(User $user, AuditEvent $auditEvent): bool
     {
-        if (!$auditEvent->is_active) {
-            return false;
-        }
-
         $project = $auditEvent->project;
 
         if (!$project || $project->status === Project::STATUS_INACTIVE) {
@@ -213,8 +200,8 @@ class AuditEventController extends Controller
         return $this->canAccessProject($user, $project);
     }
 
-    /** Пользователь с ролью аудитора (admin, org, NTI). */
-    private function assertValidAuditor(int $userId, string $field = 'main_auditor'): void
+    /** Главный/участник-аудитор: роль auditor + org проекта (admin/NTI — без ограничения org). */
+    private function assertAuditorBelongsToProject(int $userId, ?Project $project, string $field = 'main_auditor'): void
     {
         $auditor = User::find($userId);
 
@@ -223,6 +210,71 @@ class AuditEventController extends Controller
                 $field => ['Invalid auditor role.'],
             ]);
         }
+
+        if (in_array($auditor->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
+            return;
+        }
+
+        if (!$project || !$project->organization_id) {
+            throw ValidationException::withMessages([
+                $field => ['Organization auditor can only be assigned to a project with an organization.'],
+            ]);
+        }
+
+        if ((int) $auditor->organization_id !== (int) $project->organization_id) {
+            throw ValidationException::withMessages([
+                $field => ['Auditor must belong to the project organization.'],
+            ]);
+        }
+    }
+
+    /** Участник contributor: студент команды проекта, staff той же org или admin/NTI. */
+    private function assertContributorBelongsToProject(int $userId, ?Project $project, string $field = 'user_id'): void
+    {
+        $participant = User::find($userId);
+
+        if (!$participant) {
+            throw ValidationException::withMessages([
+                $field => ['Invalid participant.'],
+            ]);
+        }
+
+        if (in_array($participant->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
+            return;
+        }
+
+        if ($participant->role === User::ROLE_STUDENT) {
+            if (
+                !$project?->team_id
+                || !$project->team()->whereHas('users', fn ($q) => $q->where('users.id', $participant->id))->exists()
+            ) {
+                throw ValidationException::withMessages([
+                    $field => ['Student must be a member of the project team.'],
+                ]);
+            }
+
+            return;
+        }
+
+        if (in_array($participant->role, [User::ROLE_ORGANIZATION_EMPLOYEE, User::ROLE_ORGANIZATION_ADMIN], true)) {
+            if (!$project || !$project->organization_id) {
+                throw ValidationException::withMessages([
+                    $field => ['Organization participant requires a project with an organization.'],
+                ]);
+            }
+
+            if ((int) $participant->organization_id !== (int) $project->organization_id) {
+                throw ValidationException::withMessages([
+                    $field => ['Participant must belong to the project organization.'],
+                ]);
+            }
+
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            $field => ['Invalid participant role.'],
+        ]);
     }
 
     /** Только super admin может задавать прошлые даты и result при создании. */
@@ -255,7 +307,6 @@ class AuditEventController extends Controller
     private function updateRules(User $user): array
     {
         $rules = [
-            'project_id' => ['sometimes', 'required', 'integer', 'exists:projects,id'],
             'result' => ['nullable', 'integer', Rule::in([AuditEvent::RESULT_ACCEPTED, AuditEvent::RESULT_DECLINED])],
             'main_auditor' => ['sometimes', 'required', 'integer', 'exists:users,id'],
             'start_time' => ['sometimes', 'required', 'date'],

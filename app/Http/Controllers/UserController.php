@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -13,30 +14,30 @@ use Illuminate\Validation\ValidationException;
 class UserController extends Controller
 {
     /**
-     * GET /api/users — список пользователей (фильтры: role, organization_id).
+     * GET /api/users — список пользователей (только admin и NTI).
+     * Фильтры: role, organization_id.
      */
     public function index(Request $request)
     {
         $actor = $request->user();
-        $query = User::query()->with('organization');
+        abort_unless($this->canListUsers($actor), 403, 'Access denied');
 
-        $this->applyUserVisibility($query, $actor);
+        $query = User::query()->with('organization');
 
         if ($request->filled('role')) {
             $query->where('role', $request->integer('role'));
         }
 
         if ($request->filled('organization_id')) {
-            $organizationId = $request->integer('organization_id');
-            $this->assertCanFilterByOrganization($actor, $organizationId);
-            $query->where('organization_id', $organizationId);
+            $query->where('organization_id', $request->integer('organization_id'));
         }
 
         return response()->json($query->get());
     }
 
     /**
-     * POST /api/users — создание пользователя (admin, org admin).
+     * POST /api/users — создание пользователя (admin, NTI, org admin).
+     * Студент — также через POST /register.
      */
     public function store(Request $request)
     {
@@ -80,6 +81,7 @@ class UserController extends Controller
         $actor = $request->user();
         abort_unless($this->canAccessUser($actor, $user), 403, 'Access denied');
         abort_unless($this->canUpdateUser($actor, $user), 403, 'Access denied');
+        $this->assertCanManageTargetRole($actor, $user->role);
 
         $rules = $this->isSelfUpdate($actor, $user)
             ? $this->selfUpdateRules($user)
@@ -92,6 +94,10 @@ class UserController extends Controller
             $role = $data['role'] ?? $user->role;
             $organizationId = $data['organization_id'] ?? $user->organization_id;
             $this->assertValidRoleOrganization($role, $organizationId);
+        }
+
+        if (isset($data['role'])) {
+            $this->assertCanAssignRole($actor, (int) $data['role']);
         }
 
         $user->update($data);
@@ -108,7 +114,7 @@ class UserController extends Controller
         abort_unless($this->canManageUsers($actor), 403, 'Access denied');
         abort_unless($this->canAccessUser($actor, $user), 403, 'Access denied');
         abort_if($this->isSelfUpdate($actor, $user), 403, 'You cannot deactivate your own account.');
-        abort_if(in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true) && $actor->role !== User::ROLE_ADMIN, 403, 'Access denied');
+        $this->assertCanManageTargetRole($actor, $user->role);
 
         $user->tokens()->delete();
         $user->delete();
@@ -116,16 +122,136 @@ class UserController extends Controller
         return response()->noContent();
     }
 
-    /** Создавать и удалять пользователей могут admin и org admin. */
+    /**
+     * GET /api/users/{user}/subjects — предметы студента с оценками.
+     */
+    public function indexSubjects(Request $request, User $user)
+    {
+        $actor = $request->user();
+        abort_unless($this->canViewStudentSubjects($actor, $user), 403, 'Access denied');
+
+        return response()->json($user->subjects()->get());
+    }
+
+    /**
+     * POST /api/users/{user}/subjects — привязать предмет и выставить оценку (admin, NTI).
+     */
+    public function storeSubject(Request $request, User $user)
+    {
+        $actor = $request->user();
+        abort_unless($this->canManageSubjectGrades($actor), 403, 'Access denied');
+        $this->assertGradeTargetStudent($user);
+
+        $data = $request->validate([
+            'subject_id' => ['required', 'integer', 'exists:subjects,id'],
+            'grade' => ['nullable', 'numeric', 'min:1', 'max:4'],
+        ]);
+
+        if ($user->subjects()->where('subjects.id', $data['subject_id'])->exists()) {
+            throw ValidationException::withMessages([
+                'subject_id' => ['Student is already enrolled in this subject.'],
+            ]);
+        }
+
+        $user->subjects()->attach($data['subject_id'], [
+            'grade' => $data['grade'] ?? null,
+        ]);
+
+        return response()->json(
+            $user->subjects()->where('subjects.id', $data['subject_id'])->first(),
+            201
+        );
+    }
+
+    /**
+     * PATCH /api/users/{user}/subjects/{subject} — обновить оценку по предмету (admin, NTI).
+     */
+    public function updateSubject(Request $request, User $user, Subject $subject)
+    {
+        $actor = $request->user();
+        abort_unless($this->canManageSubjectGrades($actor), 403, 'Access denied');
+        $this->assertGradeTargetStudent($user);
+        $this->assertStudentHasSubject($user, $subject);
+
+        $data = $request->validate([
+            'grade' => ['required', 'numeric', 'min:1', 'max:4'],
+        ]);
+
+        $user->subjects()->updateExistingPivot($subject->id, [
+            'grade' => $data['grade'],
+        ]);
+
+        return response()->json($user->subjects()->where('subjects.id', $subject->id)->first());
+    }
+
+    /**
+     * DELETE /api/users/{user}/subjects/{subject} — отвязать предмет (admin, NTI).
+     */
+    public function destroySubject(Request $request, User $user, Subject $subject)
+    {
+        $actor = $request->user();
+        abort_unless($this->canManageSubjectGrades($actor), 403, 'Access denied');
+        $this->assertGradeTargetStudent($user);
+        $this->assertStudentHasSubject($user, $subject);
+
+        $user->subjects()->detach($subject->id);
+
+        return response()->noContent();
+    }
+
+    /** Список пользователей — только admin и NTI. */
+    private function canListUsers(User $actor): bool
+    {
+        return in_array($actor->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true);
+    }
+
+    /** Выставлять оценки по предметам могут только admin и NTI. */
+    private function canManageSubjectGrades(User $actor): bool
+    {
+        return in_array($actor->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true);
+    }
+
+    /** Чтение предметов студента: admin, NTI или сам студент. */
+    private function canViewStudentSubjects(User $actor, User $user): bool
+    {
+        if ($user->role !== User::ROLE_STUDENT) {
+            return false;
+        }
+
+        if ($this->canManageSubjectGrades($actor)) {
+            return true;
+        }
+
+        return $this->isSelfUpdate($actor, $user);
+    }
+
+    private function assertGradeTargetStudent(User $user): void
+    {
+        if ($user->role !== User::ROLE_STUDENT) {
+            throw ValidationException::withMessages([
+                'user' => ['Subject grades can only be assigned to students.'],
+            ]);
+        }
+    }
+
+    private function assertStudentHasSubject(User $user, Subject $subject): void
+    {
+        if (!$user->subjects()->where('subjects.id', $subject->id)->exists()) {
+            abort(404);
+        }
+    }
+
+    /** Создавать/удалять пользователей: admin, NTI (ограниченные роли), org admin (своя org). */
     private function canManageUsers(User $actor): bool
     {
         return in_array($actor->role, [
             User::ROLE_ADMIN,
+            User::ROLE_NTI_EMPLOYEE,
             User::ROLE_ORGANIZATION_ADMIN,
         ], true);
     }
 
-    /** Admin/org admin — любой доступный user; остальные — только свой профиль. */
+    /** Admin/org admin/NTI — управление доступными user; остальные — только свой профиль. */
     private function canUpdateUser(User $actor, User $user): bool
     {
         if ($this->canManageUsers($actor)) {
@@ -167,40 +293,6 @@ class UserController extends Controller
         return false;
     }
 
-    private function applyUserVisibility(\Illuminate\Database\Eloquent\Builder $query, User $actor): \Illuminate\Database\Eloquent\Builder
-    {
-        // Сотрудник организации видит только пользователей своей организации.
-        if ($actor->role === User::ROLE_ORGANIZATION_EMPLOYEE) {
-            return $actor->organization_id
-                ? $query->where('organization_id', $actor->organization_id)
-                : $query->whereRaw('0 = 1');
-        }
-
-        if (in_array($actor->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
-            return $query;
-        }
-
-        if ($actor->role === User::ROLE_ORGANIZATION_ADMIN) {
-            return $query
-                ->where('organization_id', $actor->organization_id)
-                ->whereNotIn('role', [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE]);
-        }
-
-        if ($actor->role === User::ROLE_STUDENT) {
-            return $query->where('id', $actor->id);
-        }
-
-        return $query->whereRaw('0 = 1');
-    }
-
-    /** Org admin не может фильтровать по чужой организации. */
-    private function assertCanFilterByOrganization(User $actor, int $organizationId): void
-    {
-        if ($actor->role === User::ROLE_ORGANIZATION_ADMIN && (int) $organizationId !== (int) $actor->organization_id) {
-            abort(403, 'Access denied');
-        }
-    }
-
     /** Согласованность role и organization_id. */
     private function assertValidRoleOrganization(int $role, ?int $organizationId): void
     {
@@ -232,6 +324,15 @@ class UserController extends Controller
             ];
         }
 
+        if ($actor->role === User::ROLE_NTI_EMPLOYEE) {
+            return [
+                User::ROLE_ADMIN,
+                User::ROLE_STUDENT,
+                User::ROLE_ORGANIZATION_EMPLOYEE,
+                User::ROLE_ORGANIZATION_ADMIN,
+            ];
+        }
+
         if ($actor->role === User::ROLE_ORGANIZATION_ADMIN) {
             return [
                 User::ROLE_STUDENT,
@@ -241,6 +342,27 @@ class UserController extends Controller
         }
 
         return [];
+    }
+
+    /** NTI не управляет существующими admin/NTI; только admin. */
+    private function assertCanManageTargetRole(User $actor, int $targetRole): void
+    {
+        if ($actor->role === User::ROLE_ADMIN) {
+            return;
+        }
+
+        if (in_array($targetRole, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
+            abort(403, 'Access denied');
+        }
+    }
+
+    private function assertCanAssignRole(User $actor, int $role): void
+    {
+        if (!in_array($role, $this->assignableRoles($actor), true)) {
+            throw ValidationException::withMessages([
+                'role' => ['You cannot assign this role.'],
+            ]);
+        }
     }
 
     private function selfUpdateRules(User $user): array

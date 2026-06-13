@@ -46,7 +46,7 @@ class EvaluationController extends Controller
         $data = $request->validate([
             'project_id' => ['required', 'integer', 'exists:projects,id'],
             'evaluator_id' => ['nullable', 'integer', 'exists:users,id'],
-            'score' => ['required', 'integer', 'min:0', 'max:255'],
+            'score' => ['required', 'integer', 'min:0', 'max:100'],
             'comment' => ['nullable', 'string'],
         ]);
 
@@ -93,7 +93,7 @@ class EvaluationController extends Controller
         abort_unless($this->canAccessProject($user, $evaluation->project), 403, 'Access denied');
 
         $data = $request->validate([
-            'score' => ['sometimes', 'required', 'integer', 'min:0', 'max:255'],
+            'score' => ['sometimes', 'required', 'integer', 'min:0', 'max:100'],
             'comment' => ['nullable', 'string'],
         ]);
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,6 +14,39 @@ use Illuminate\Validation\ValidationException;
  */
 class AuthController extends Controller
 {
+    /**
+     * POST /api/register — публичная регистрация студента.
+     */
+    public function register(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+            'birth_date' => ['required', 'date'],
+            'password' => ['required', 'string', 'min:8', 'confirmed'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'avatar_path' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $user = User::create([
+            'role' => User::ROLE_STUDENT,
+            'name' => $data['name'],
+            'email' => $data['email'],
+            'birth_date' => $data['birth_date'],
+            'password' => $data['password'],
+            'phone' => $data['phone'] ?? null,
+            'avatar_path' => $data['avatar_path'] ?? null,
+            'organization_id' => null,
+        ]);
+
+        $token = $user->createToken('api')->plainTextToken;
+
+        return response()->json([
+            'token' => $token,
+            'user' => $user->load('organization'),
+        ], 201);
+    }
+
     /**
      * POST /api/login — выдаёт токен и данные пользователя.
      */

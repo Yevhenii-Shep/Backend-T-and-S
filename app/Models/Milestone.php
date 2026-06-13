@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Milestone extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     // просто константы для статусов проекта, если тебе по логике будут нужны будут еще статусы или ты захочешь эти поменять просто допиши или поменяй
     // на датабазу это никак не повлияет
@@ -24,12 +25,10 @@ class Milestone extends Model
         'status',
         'deadline',
         'description',
-        'is_active',
     ];
 
     protected $casts = [
         'deadline' => 'datetime',
-        'is_active' => 'boolean',
     ];
 
     // Этап принадлежит проекту 1:N

@@ -24,7 +24,6 @@ class DocumentSeeder extends Seeder
             'name' => 'Technical Specification',
             'description' => 'fkafksjfdkafk',
             'file_path' => 'documents/technical.pdf',
-            'is_active' => true,
         ]);
 
         Document::create([
@@ -32,7 +31,6 @@ class DocumentSeeder extends Seeder
             'name' => 'Diagram',
             'description' => 'beautiful diagram',
             'file_path' => 'documents/diagram.svg',
-            'is_active' => true,
         ]);
 
         Document::create([
@@ -40,7 +38,6 @@ class DocumentSeeder extends Seeder
             'name' => 'DB model',
             'description' => 'model',
             'file_path' => 'documents/model.mwb',
-            'is_active' => true,
         ]);
 
         Document::create([
@@ -48,16 +45,15 @@ class DocumentSeeder extends Seeder
             'name' => 'SQL script',
             'description' => 'full sql script',
             'file_path' => 'documents/script.sql',
-            'is_active' => true,
         ]);
 
-        // Деактивированный документ (для проверки soft-delete через is_active).
-        Document::create([
+        // Удалённый документ (для проверки soft delete).
+        $archived = Document::create([
             'project_id' => $aiProject->id,
             'name' => 'Old draft (archived)',
             'description' => 'Removed from active list',
             'file_path' => 'documents/old-draft.pdf',
-            'is_active' => false,
         ]);
+        $archived->delete();
     }
 }

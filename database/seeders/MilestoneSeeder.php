@@ -25,7 +25,6 @@ class MilestoneSeeder extends Seeder
             'status' => Milestone::STATUS_IN_PROGRESS,
             'deadline' => now()->addWeeks(3),
             'description' => 'Project planning and requirements gathering',
-            'is_active' => true,
         ]);
 
         Milestone::create([
@@ -34,7 +33,6 @@ class MilestoneSeeder extends Seeder
             'status' => Milestone::STATUS_PENDING,
             'deadline' => now()->addWeeks(8),
             'description' => 'write code',
-            'is_active' => true,
         ]);
 
         Milestone::create([
@@ -43,7 +41,6 @@ class MilestoneSeeder extends Seeder
             'status' => Milestone::STATUS_DONE,
             'deadline' => now()->addWeeks(6),
             'description' => 'Just chill guys',
-            'is_active' => true,
         ]);
 
         Milestone::create([
@@ -52,7 +49,6 @@ class MilestoneSeeder extends Seeder
             'status' => Milestone::STATUS_IN_PROGRESS,
             'deadline' => now()->addWeeks(12),
             'description' => 'Do you remember your mom number?',
-            'is_active' => true,
         ]);
     }
 }
