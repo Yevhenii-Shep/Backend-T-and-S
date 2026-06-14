@@ -15,7 +15,9 @@ class Project extends Model
     const STATUS_ACTIVE = 1;
     const STATUS_DONE = 2;
     const STATUS_INACTIVE = 3;
+    /** Grantový inkubačný — financovanie + mentoring. */
     const PROGRAM_TYPE_A = 1;
+    /** Živá prax — zadania od firiem (ľudia od NTI). */
     const PROGRAM_TYPE_B = 2;
 
     protected $table = 'projects';

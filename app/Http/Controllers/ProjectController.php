@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Controllers\Concerns\ChecksProjectAccess;
 use App\Http\Resources\ProjectResource;
 use App\Models\Project;
+use App\Models\Team;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -77,16 +78,18 @@ class ProjectController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        abort_unless($this->canModifyResources($user), 403, 'Access denied');
+        abort_unless($this->canCreateProject($user), 403, 'Access denied');
+
+        $teamIdRules = $user->role === User::ROLE_STUDENT
+            ? ['required', 'integer', 'exists:teams,id']
+            : ['nullable', 'integer', 'exists:teams,id'];
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:projects,slug'],
-            'team_id' => ['nullable', 'integer', 'exists:teams,id'],
+            'team_id' => $teamIdRules,
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
-            'program_type' => ['required', 'integer', Rule::in($this->settableProgramTypes())],
-            'mentor_from_nti' => ['nullable', 'integer', 'exists:users,id'],
-            'mentor_from_organization' => ['nullable', 'integer', 'exists:users,id'],
+            'program_type' => ['required', 'integer', Rule::in($this->creatableProgramTypesForUser($user))],
             'category_id' => ['required', 'integer', 'exists:categories,id'],
             'status' => ['required', 'integer', Rule::in($this->settableProjectStatuses())],
             'description' => ['nullable', 'string'],
@@ -101,7 +104,9 @@ class ProjectController extends Controller
             $data['organization_id'] = $user->organization_id;
         }
 
-        $this->assertValidMentors($data);
+        if ($user->role === User::ROLE_STUDENT) {
+            $this->assertStudentBelongsToTeam($user, (int) $data['team_id']);
+        }
 
         $project = Project::create($data);
 
@@ -115,7 +120,7 @@ class ProjectController extends Controller
      */
     public function show(Request $request, Project $project)
     {
-        abort_unless($this->canAccessProject($request->user(), $project), 403, 'Access denied');
+        abort_unless($this->canStaffAccessProject($request->user(), $project), 403, 'Access denied');
 
         return new ProjectResource(
             $project->load($this->projectDetailRelations())
@@ -129,37 +134,13 @@ class ProjectController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
+        abort_unless($this->canWriteProject($user, $project), 403, 'Access denied');
 
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
             'slug' => ['sometimes', 'required', 'string', 'max:255', Rule::unique('projects', 'slug')->ignore($project->id)],
-            'team_id' => ['nullable', 'integer', 'exists:teams,id'],
-            'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
-            'program_type' => ['sometimes', 'required', 'integer', Rule::in($this->settableProgramTypes())],
-            'mentor_from_nti' => ['nullable', 'integer', 'exists:users,id'],
-            'mentor_from_organization' => ['nullable', 'integer', 'exists:users,id'],
-            'category_id' => ['sometimes', 'required', 'integer', 'exists:categories,id'],
-            'status' => ['sometimes', 'required', 'integer', Rule::in($this->settableProjectStatuses())],
             'description' => ['nullable', 'string'],
-            'deadline' => ['nullable', 'date'],
         ]);
-
-        if ($user->role === User::ROLE_ORGANIZATION_ADMIN) {
-            $data['organization_id'] = $user->organization_id;
-        }
-
-        if ($user->role === User::ROLE_ORGANIZATION_EMPLOYEE) {
-            $data['organization_id'] = $user->organization_id;
-        }
-
-        $merged = array_merge($project->only([
-            'mentor_from_nti',
-            'mentor_from_organization',
-            'organization_id',
-        ]), $data);
-
-        $this->assertValidMentors($merged);
 
         $project->update($data);
 
@@ -176,38 +157,225 @@ class ProjectController extends Controller
         $user = $request->user();
         abort_unless($this->canDeactivateResources($user), 403, 'Access denied');
         abort_if($project->status === Project::STATUS_INACTIVE, 404);
-        abort_unless($this->canManageProject($user, $project), 403, 'Access denied');
+        abort_unless($this->canWriteProject($user, $project), 403, 'Access denied');
 
         $project->update(['status' => Project::STATUS_INACTIVE]);
 
         return response()->noContent();
     }
 
-    /** Проверка ролей менторов и принадлежности org-ментора к организации проекта. */
-    private function assertValidMentors(array $data): void
+    /**
+     * PATCH /api/projects/{project}/status — смена статуса (pending / active / done).
+     */
+    public function updateStatus(Request $request, Project $project)
     {
-        if (!empty($data['mentor_from_nti'])) {
-            $mentor = User::find($data['mentor_from_nti']);
-            if (!$mentor || $mentor->role !== User::ROLE_NTI_EMPLOYEE) {
-                throw ValidationException::withMessages([
-                    'mentor_from_nti' => ['Mentor must be an NTI employee.'],
-                ]);
+        $user = $request->user();
+        abort_unless($this->canAdminOrProjectNtiMentor($user, $project), 403, 'Access denied');
+        abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
+
+        $data = $request->validate([
+            'status' => ['required', 'integer', Rule::in($this->settableProjectStatuses())],
+        ]);
+
+        $project->update(['status' => $data['status']]);
+
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
+        );
+    }
+
+    /**
+     * PATCH /api/projects/{project}/deadline — смена дедлайна.
+     */
+    public function updateDeadline(Request $request, Project $project)
+    {
+        $user = $request->user();
+        abort_unless($this->canAdminOrProjectNtiMentor($user, $project), 403, 'Access denied');
+        abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
+
+        $data = $request->validate([
+            'deadline' => ['nullable', 'date'],
+        ]);
+
+        $project->update(['deadline' => $data['deadline'] ?? null]);
+
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
+        );
+    }
+
+    /**
+     * PATCH /api/projects/{project}/assign-team — назначить проект команде (или отвязать).
+     */
+    public function assignTeam(Request $request, Project $project)
+    {
+        $user = $request->user();
+        abort_unless($this->canAdminAssignProjectRelations($user), 403, 'Access denied');
+        abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
+
+        $data = $request->validate([
+            'team_id' => ['nullable', 'integer', 'exists:teams,id'],
+        ]);
+
+        $project->update(['team_id' => $data['team_id'] ?? null]);
+
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
+        );
+    }
+
+    /**
+     * PATCH /api/projects/{project}/assign-organization — назначить проект организации (или отвязать).
+     */
+    public function assignOrganization(Request $request, Project $project)
+    {
+        $user = $request->user();
+        abort_unless($this->canAdminAssignProjectRelations($user), 403, 'Access denied');
+        abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
+
+        $data = $request->validate([
+            'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
+        ]);
+
+        $organizationId = $data['organization_id'] ?? null;
+        $update = ['organization_id' => $organizationId];
+
+        if ($project->mentor_from_organization) {
+            $mentor = User::find($project->mentor_from_organization);
+            if (
+                !$organizationId
+                || !$mentor
+                || (int) $mentor->organization_id !== (int) $organizationId
+            ) {
+                $update['mentor_from_organization'] = null;
             }
         }
 
-        if (!empty($data['mentor_from_organization'])) {
-            $mentor = User::find($data['mentor_from_organization']);
-            $orgId = $data['organization_id'] ?? null;
+        $project->update($update);
 
-            if (
-                !$mentor
-                || !in_array($mentor->role, [User::ROLE_ORGANIZATION_EMPLOYEE, User::ROLE_ORGANIZATION_ADMIN], true)
-                || ($orgId && (int) $mentor->organization_id !== (int) $orgId)
-            ) {
-                throw ValidationException::withMessages([
-                    'mentor_from_organization' => ['Mentor must belong to the project organization.'],
-                ]);
-            }
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
+        );
+    }
+
+    /**
+     * PATCH /api/projects/{project}/assign-category — назначить категорию проекту.
+     */
+    public function assignCategory(Request $request, Project $project)
+    {
+        $user = $request->user();
+        abort_unless($this->canAdminAssignProjectRelations($user), 403, 'Access denied');
+        abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
+
+        $data = $request->validate([
+            'category_id' => ['required', 'integer', 'exists:categories,id'],
+        ]);
+
+        $project->update(['category_id' => $data['category_id']]);
+
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
+        );
+    }
+
+    /**
+     * PATCH /api/projects/{project}/assign-nti-mentor — назначить NTI-ментора (или отвязать).
+     */
+    public function assignNtiMentor(Request $request, Project $project)
+    {
+        $user = $request->user();
+        abort_unless($this->canAssignNtiMentor($user), 403, 'Access denied');
+        abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
+
+        $data = $request->validate([
+            'mentor_from_nti' => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        $mentorId = $data['mentor_from_nti'] ?? null;
+        $this->assertValidNtiMentor($mentorId);
+
+        $project->update(['mentor_from_nti' => $mentorId]);
+
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
+        );
+    }
+
+    /**
+     * PATCH /api/projects/{project}/assign-organization-mentor — назначить ментора организации (или отвязать).
+     */
+    public function assignOrganizationMentor(Request $request, Project $project)
+    {
+        $user = $request->user();
+        abort_unless($this->canAssignOrganizationMentor($user, $project), 403, 'Access denied');
+        abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
+
+        $data = $request->validate([
+            'mentor_from_organization' => ['nullable', 'integer', 'exists:users,id'],
+        ]);
+
+        $mentorId = $data['mentor_from_organization'] ?? null;
+        $this->assertValidOrganizationMentor($project, $mentorId);
+
+        $project->update(['mentor_from_organization' => $mentorId]);
+
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
+        );
+    }
+
+    /** Студент может создавать проект только для своей команды. */
+    private function assertStudentBelongsToTeam(User $user, int $teamId): void
+    {
+        $belongsToTeam = Team::query()
+            ->where('id', $teamId)
+            ->whereHas('users', fn ($teamUsers) => $teamUsers->where('users.id', $user->id))
+            ->exists();
+
+        if (!$belongsToTeam) {
+            throw ValidationException::withMessages([
+                'team_id' => ['You must belong to the selected team.'],
+            ]);
+        }
+    }
+
+    /** Проверка NTI-ментора. */
+    private function assertValidNtiMentor(?int $mentorId): void
+    {
+        if ($mentorId === null) {
+            return;
+        }
+
+        $mentor = User::find($mentorId);
+        if (!$mentor || $mentor->role !== User::ROLE_NTI_EMPLOYEE) {
+            throw ValidationException::withMessages([
+                'mentor_from_nti' => ['Mentor must be an NTI employee.'],
+            ]);
+        }
+    }
+
+    /** Проверка org-ментора: только сотрудник/admin той же организации, что и проект. */
+    private function assertValidOrganizationMentor(Project $project, ?int $mentorId): void
+    {
+        if ($mentorId === null) {
+            return;
+        }
+
+        if (!$project->organization_id) {
+            throw ValidationException::withMessages([
+                'mentor_from_organization' => ['Project must be assigned to an organization first.'],
+            ]);
+        }
+
+        $mentor = User::find($mentorId);
+        if (
+            !$mentor
+            || !in_array($mentor->role, [User::ROLE_ORGANIZATION_EMPLOYEE, User::ROLE_ORGANIZATION_ADMIN], true)
+            || (int) $mentor->organization_id !== (int) $project->organization_id
+        ) {
+            throw ValidationException::withMessages([
+                'mentor_from_organization' => ['Mentor must belong to the project organization.'],
+            ]);
         }
     }
 }

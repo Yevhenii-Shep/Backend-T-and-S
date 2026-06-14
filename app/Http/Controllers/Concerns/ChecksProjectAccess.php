@@ -22,6 +22,72 @@ trait ChecksProjectAccess
         ], true);
     }
 
+    /** Может создавать проект (студент — только тип A / financovanie). */
+    private function canCreateProject(User $user): bool
+    {
+        return in_array($user->role, [
+            User::ROLE_ADMIN,
+            User::ROLE_ORGANIZATION_EMPLOYEE,
+            User::ROLE_ORGANIZATION_ADMIN,
+            User::ROLE_NTI_EMPLOYEE,
+            User::ROLE_STUDENT,
+        ], true);
+    }
+
+    /** Допустимые program_type при создании/смене типа по роли. */
+    private function creatableProgramTypesForUser(User $user): array
+    {
+        if ($user->role === User::ROLE_STUDENT) {
+            return [Project::PROGRAM_TYPE_A];
+        }
+
+        if (in_array($user->role, [
+            User::ROLE_NTI_EMPLOYEE,
+            User::ROLE_ORGANIZATION_ADMIN,
+            User::ROLE_ORGANIZATION_EMPLOYEE,
+        ], true)) {
+            return [Project::PROGRAM_TYPE_B];
+        }
+
+        return $this->settableProgramTypes();
+    }
+
+    /** Назначение команды, организации или категории — только admin. */
+    private function canAdminAssignProjectRelations(User $user): bool
+    {
+        return $user->role === User::ROLE_ADMIN;
+    }
+
+    /** Назначение NTI-ментора — admin и NTI. */
+    private function canAssignNtiMentor(User $user): bool
+    {
+        return in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true);
+    }
+
+    /** Назначение org-ментора — admin или org admin своей организации проекта. */
+    private function canAssignOrganizationMentor(User $user, Project $project): bool
+    {
+        if ($user->role === User::ROLE_ADMIN) {
+            return true;
+        }
+
+        if ($user->role !== User::ROLE_ORGANIZATION_ADMIN || !$user->organization_id || !$project->organization_id) {
+            return false;
+        }
+
+        return (int) $user->organization_id === (int) $project->organization_id;
+    }
+
+    /** Смена статуса / дедлайна — admin или назначенный NTI-ментор проекта. */
+    private function canAdminOrProjectNtiMentor(User $user, Project $project): bool
+    {
+        if ($user->role === User::ROLE_ADMIN) {
+            return true;
+        }
+
+        return $project->mentor_from_nti && (int) $project->mentor_from_nti === (int) $user->id;
+    }
+
     /** Может деактивировать сущности (студент и NTI — нет). */
     private function canDeactivateResources(User $user): bool
     {
@@ -40,6 +106,19 @@ trait ChecksProjectAccess
         }
 
         return $this->canManageProject($user, $project);
+    }
+
+    /**
+     * Доступ к проекту для admin/NTI без блокировки inactive.
+     * Остальные роли — как canAccessProject.
+     */
+    private function canStaffAccessProject(User $user, Project $project): bool
+    {
+        if (in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
+            return $this->canManageProject($user, $project);
+        }
+
+        return $this->canAccessProject($user, $project);
     }
 
     /** Доступ к проекту без учёта inactive (нужно для destroy). */
@@ -76,10 +155,33 @@ trait ChecksProjectAccess
         return (int) $project->program_type === Project::PROGRAM_TYPE_A;
     }
 
+    /**
+     * Право изменять проект и дочерние сущности.
+     * Org — только проекты своей организации (program A чужих org — только чтение).
+     */
+    private function canWriteProject(User $user, Project $project): bool
+    {
+        if (in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
+            return true;
+        }
+
+        if (in_array($user->role, [User::ROLE_ORGANIZATION_ADMIN, User::ROLE_ORGANIZATION_EMPLOYEE], true)) {
+            if (!$user->organization_id || !$project->organization_id) {
+                return false;
+            }
+
+            return (int) $project->organization_id === (int) $user->organization_id;
+        }
+
+        return false;
+    }
+
     /** Фильтр списка проектов по роли текущего пользователя. */
     private function applyProjectVisibility(Builder $query, User $user): Builder
     {
-        $query->where('status', '!=', Project::STATUS_INACTIVE);
+        if (!in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
+            $query->where('status', '!=', Project::STATUS_INACTIVE);
+        }
 
         if (in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
             return $query;
@@ -119,13 +221,17 @@ trait ChecksProjectAccess
         return $query->whereHas('project', fn (Builder $projectQuery) => $this->applyProjectVisibility($projectQuery, $user));
     }
 
-    /** Фильтр evaluations: доступные проекты. */
+    /** Фильтр evaluations: проекты по видимости или свои оценки как evaluator. */
     private function applyEvaluationVisibility(Builder $query, User $user): Builder
     {
-        return $query->whereHas(
-            'project',
-            fn (Builder $projectQuery) => $this->applyProjectVisibility($projectQuery, $user)
-        );
+        return $query->where(function (Builder $visibilityQuery) use ($user) {
+            $visibilityQuery
+                ->where('evaluator_id', $user->id)
+                ->orWhereHas(
+                    'project',
+                    fn (Builder $projectQuery) => $this->applyProjectVisibility($projectQuery, $user)
+                );
+        });
     }
 
     /** Статусы, которые можно задать через API (inactive — только через DELETE). */

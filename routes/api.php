@@ -37,10 +37,18 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('users/{user}/subjects/{subject}', [UserController::class, 'updateSubject']);
     Route::delete('users/{user}/subjects/{subject}', [UserController::class, 'destroySubject']);
 
+    Route::patch('projects/{project}/status', [ProjectController::class, 'updateStatus']);
+    Route::patch('projects/{project}/deadline', [ProjectController::class, 'updateDeadline']);
+    Route::patch('projects/{project}/assign-nti-mentor', [ProjectController::class, 'assignNtiMentor']);
+    Route::patch('projects/{project}/assign-organization-mentor', [ProjectController::class, 'assignOrganizationMentor']);
+    Route::patch('projects/{project}/assign-category', [ProjectController::class, 'assignCategory']);
+    Route::patch('projects/{project}/assign-team', [ProjectController::class, 'assignTeam']);
+    Route::patch('projects/{project}/assign-organization', [ProjectController::class, 'assignOrganization']);
     Route::apiResource('projects', ProjectController::class);
 
     Route::get('documents/{document}/download', [DocumentController::class, 'download']);
     Route::apiResource('documents', DocumentController::class);
+    Route::patch('milestones/{milestone}/status', [MilestoneController::class, 'updateStatus']);
     Route::apiResource('milestones', MilestoneController::class);
     Route::apiResource('evaluations', EvaluationController::class);
     Route::apiResource('audit-events', AuditEventController::class);

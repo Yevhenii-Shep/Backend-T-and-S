@@ -6,10 +6,12 @@ use App\Http\Controllers\Concerns\ChecksProjectAccess;
 use App\Http\Resources\DocumentResource;
 use App\Models\Document;
 use App\Models\Project;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rules\File;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -34,7 +36,7 @@ class DocumentController extends Controller
 
         if ($request->filled('project_id')) {
             $project = Project::findOrFail($request->integer('project_id'));
-            abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
+            abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
             $query->where('project_id', $project->id);
         }
 
@@ -57,7 +59,8 @@ class DocumentController extends Controller
         ]);
 
         $project = Project::findOrFail($data['project_id']);
-        abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
+        abort_unless($this->canWriteProject($user, $project), 403, 'Access denied');
+        $this->assertProjectAcceptsDocument($user, $project);
 
         $document = Document::create([
             'project_id' => $project->id,
@@ -76,7 +79,7 @@ class DocumentController extends Controller
      */
     public function show(Request $request, Document $document)
     {
-        abort_unless($this->canAccessProject($request->user(), $document->project), 403, 'Access denied');
+        abort_unless($this->canAccessDocument($request->user(), $document), 403, 'Access denied');
 
         return new DocumentResource($document->load('project'));
     }
@@ -86,7 +89,7 @@ class DocumentController extends Controller
      */
     public function download(Request $request, Document $document): StreamedResponse
     {
-        abort_unless($this->canAccessProject($request->user(), $document->project), 403, 'Access denied');
+        abort_unless($this->canAccessDocument($request->user(), $document), 403, 'Access denied');
         abort_unless(Storage::disk(self::DOCUMENT_DISK)->exists($document->file_path), 404);
 
         return Storage::disk(self::DOCUMENT_DISK)->download(
@@ -102,7 +105,11 @@ class DocumentController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($this->canAccessProject($user, $document->project), 403, 'Access denied');
+        abort_unless(
+            $document->project && $this->canWriteProject($user, $document->project),
+            403,
+            'Access denied'
+        );
 
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
@@ -128,12 +135,37 @@ class DocumentController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canDeactivateResources($user), 403, 'Access denied');
-        abort_unless($this->canManageProject($user, $document->project), 403, 'Access denied');
+        abort_unless($document->project && $this->canWriteProject($user, $document->project), 403, 'Access denied');
 
         $this->deleteStoredFile($document->file_path);
         $document->delete();
 
         return response()->noContent();
+    }
+
+    private function canAccessDocument(User $user, Document $document): bool
+    {
+        if (!$document->project) {
+            return false;
+        }
+
+        return $this->canStaffAccessProject($user, $document->project);
+    }
+
+    /** Нельзя загружать документы в inactive-проект (кроме admin/NTI). */
+    private function assertProjectAcceptsDocument(User $user, Project $project): void
+    {
+        if ($project->status !== Project::STATUS_INACTIVE) {
+            return;
+        }
+
+        if (in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'project_id' => ['Cannot upload documents to an inactive project.'],
+        ]);
     }
 
     private function documentFileRule(): File

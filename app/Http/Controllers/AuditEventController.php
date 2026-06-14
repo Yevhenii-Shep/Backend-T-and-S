@@ -34,7 +34,7 @@ class AuditEventController extends Controller
 
         if ($request->filled('project_id')) {
             $project = Project::findOrFail($request->integer('project_id'));
-            abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
+            abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
             $query->where('project_id', $project->id);
         }
 
@@ -53,7 +53,8 @@ class AuditEventController extends Controller
         $data = $request->validate($this->storeRules($user));
 
         $project = Project::findOrFail($data['project_id']);
-        abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
+        abort_unless($this->canWriteProject($user, $project), 403, 'Access denied');
+        $this->assertProjectAcceptsAudit($user, $project);
         $this->assertAuditorBelongsToProject($data['main_auditor'], $project);
         $this->assertScheduleOnCreate($user, $data);
 
@@ -88,7 +89,7 @@ class AuditEventController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
+        abort_unless($this->canWriteAudit($user, $auditEvent), 403, 'Access denied');
 
         $data = $request->validate($this->updateRules($user));
 
@@ -120,7 +121,7 @@ class AuditEventController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canDeactivateResources($user), 403, 'Access denied');
-        abort_unless($auditEvent->project && $this->canManageProject($user, $auditEvent->project), 403, 'Access denied');
+        abort_unless($auditEvent->project && $this->canWriteProject($user, $auditEvent->project), 403, 'Access denied');
 
         $auditEvent->delete();
 
@@ -134,7 +135,7 @@ class AuditEventController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
+        abort_unless($this->canWriteAudit($user, $auditEvent), 403, 'Access denied');
 
         $data = $request->validate([
             'user_id' => ['required', 'integer', 'exists:users,id'],
@@ -177,7 +178,7 @@ class AuditEventController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
+        abort_unless($this->canWriteAudit($user, $auditEvent), 403, 'Access denied');
 
         $deleted = AuditParticipant::query()
             ->where('audit_event_id', $auditEvent->id)
@@ -193,11 +194,37 @@ class AuditEventController extends Controller
     {
         $project = $auditEvent->project;
 
-        if (!$project || $project->status === Project::STATUS_INACTIVE) {
+        if (!$project) {
             return false;
         }
 
-        return $this->canAccessProject($user, $project);
+        return $this->canStaffAccessProject($user, $project);
+    }
+
+    /** Изменение аудита: нужен доступ на запись к проекту. */
+    private function canWriteAudit(User $user, AuditEvent $auditEvent): bool
+    {
+        if (!$auditEvent->project) {
+            return false;
+        }
+
+        return $this->canWriteProject($user, $auditEvent->project);
+    }
+
+    /** Нельзя создавать аудит для inactive-проекта (кроме admin/NTI). */
+    private function assertProjectAcceptsAudit(User $user, Project $project): void
+    {
+        if ($project->status !== Project::STATUS_INACTIVE) {
+            return;
+        }
+
+        if (in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'project_id' => ['Cannot create audits for an inactive project.'],
+        ]);
     }
 
     /** Главный/участник-аудитор: роль auditor + org проекта (admin/NTI — без ограничения org). */
@@ -205,7 +232,13 @@ class AuditEventController extends Controller
     {
         $auditor = User::find($userId);
 
-        if (!$auditor || !in_array($auditor->role, $this->auditorRoleIds(), true)) {
+        if (!$auditor) {
+            throw ValidationException::withMessages([
+                $field => ['Auditor not found.'],
+            ]);
+        }
+
+        if (!in_array($auditor->role, $this->auditorRoleIds(), true)) {
             throw ValidationException::withMessages([
                 $field => ['Invalid auditor role.'],
             ]);
@@ -310,7 +343,7 @@ class AuditEventController extends Controller
             'result' => ['nullable', 'integer', Rule::in([AuditEvent::RESULT_ACCEPTED, AuditEvent::RESULT_DECLINED])],
             'main_auditor' => ['sometimes', 'required', 'integer', 'exists:users,id'],
             'start_time' => ['sometimes', 'required', 'date'],
-            'end_time' => ['sometimes', 'required', 'date'],
+            'end_time' => ['sometimes', 'required', 'date', 'after:start_time'],
         ];
 
         if (!$this->isAdmin($user)) {

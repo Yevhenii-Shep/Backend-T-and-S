@@ -29,7 +29,7 @@ class EvaluationController extends Controller
 
         if ($request->filled('project_id')) {
             $project = Project::findOrFail($request->integer('project_id'));
-            abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
+            abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
             $query->where('project_id', $project->id);
         }
 
@@ -52,7 +52,8 @@ class EvaluationController extends Controller
         ]);
 
         $project = Project::findOrFail($data['project_id']);
-        abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
+        abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
+        $this->assertProjectAcceptsEvaluation($user, $project);
 
         // Только admin может назначить другого оценщика.
         if ($user->role !== User::ROLE_ADMIN) {
@@ -81,7 +82,7 @@ class EvaluationController extends Controller
      */
     public function show(Request $request, Evaluation $evaluation)
     {
-        abort_unless($this->canAccessProject($request->user(), $evaluation->project), 403, 'Access denied');
+        abort_unless($this->canAccessEvaluation($request->user(), $evaluation), 403, 'Access denied');
 
         return new EvaluationResource($evaluation->load(['project', 'evaluator']));
     }
@@ -93,7 +94,7 @@ class EvaluationController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyEvaluation($user, $evaluation), 403, 'Access denied');
-        abort_unless($this->canAccessProject($user, $evaluation->project), 403, 'Access denied');
+        abort_unless($this->canAccessEvaluation($user, $evaluation), 403, 'Access denied');
 
         $data = $request->validate([
             'score' => ['sometimes', 'required', 'integer', 'min:0', 'max:100'],
@@ -112,11 +113,41 @@ class EvaluationController extends Controller
     {
         $user = $request->user();
         abort_unless($this->canModifyEvaluation($user, $evaluation), 403, 'Access denied');
-        abort_unless($this->canAccessProject($user, $evaluation->project), 403, 'Access denied');
+        abort_unless($this->canAccessEvaluation($user, $evaluation), 403, 'Access denied');
 
         $evaluation->delete();
 
         return response()->noContent();
+    }
+
+    /** Чтение оценки: автор оценки или доступ к проекту (admin/NTI — включая inactive). */
+    private function canAccessEvaluation(User $user, Evaluation $evaluation): bool
+    {
+        if ((int) $evaluation->evaluator_id === (int) $user->id) {
+            return true;
+        }
+
+        if (!$evaluation->project) {
+            return false;
+        }
+
+        return $this->canStaffAccessProject($user, $evaluation->project);
+    }
+
+    /** Нельзя оценивать inactive-проект (кроме admin/NTI). */
+    private function assertProjectAcceptsEvaluation(User $user, Project $project): void
+    {
+        if ($project->status !== Project::STATUS_INACTIVE) {
+            return;
+        }
+
+        if (in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'project_id' => ['Cannot evaluate an inactive project.'],
+        ]);
     }
 
     /** Менять оценку может автор (с правом оценивать) или admin. */
