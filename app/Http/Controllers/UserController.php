@@ -2,10 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\SubjectResource;
+use App\Http\Resources\UserResource;
 use App\Models\Subject;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\File;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -13,6 +18,8 @@ use Illuminate\Validation\ValidationException;
  */
 class UserController extends Controller
 {
+    private const AVATAR_DISK = 'public';
+
     /**
      * GET /api/users — список пользователей (только admin и NTI).
      * Фильтры: role, organization_id.
@@ -32,7 +39,27 @@ class UserController extends Controller
             $query->where('organization_id', $request->integer('organization_id'));
         }
 
-        return response()->json($query->get());
+        return UserResource::collection($query->get());
+    }
+
+    /**
+     * POST /api/users/me/avatar — загрузить или заменить аватар (multipart: avatar).
+     */
+    public function updateAvatar(Request $request)
+    {
+        $user = $request->user();
+
+        $data = $request->validate([
+            'avatar' => ['required', 'file', $this->avatarFileRule()],
+        ]);
+
+        $this->deleteStoredAvatar($user->avatar_path);
+
+        $user->update([
+            'avatar_path' => $this->storeAvatarFile($data['avatar'], $user->id),
+        ]);
+
+        return new UserResource($user->load('organization'));
     }
 
     /**
@@ -52,7 +79,6 @@ class UserController extends Controller
             'birth_date' => ['required', 'date'],
             'password' => ['required', 'string', 'min:8'],
             'phone' => ['nullable', 'string', 'max:30'],
-            'avatar_path' => ['nullable', 'string', 'max:255'],
         ]);
 
         $data = $this->normalizeUserDataForActor($actor, $data);
@@ -60,7 +86,9 @@ class UserController extends Controller
 
         $user = User::create($data);
 
-        return response()->json($user->load('organization'), 201);
+        return (new UserResource($user->load('organization')))
+            ->response()
+            ->setStatusCode(201);
     }
 
     /**
@@ -70,7 +98,13 @@ class UserController extends Controller
     {
         abort_unless($this->canAccessUser($request->user(), $user), 403, 'Access denied');
 
-        return response()->json($user->load('organization'));
+        $user->load('organization');
+
+        if ($user->role === User::ROLE_STUDENT) {
+            $user->load('subjects');
+        }
+
+        return new UserResource($user);
     }
 
     /**
@@ -102,7 +136,7 @@ class UserController extends Controller
 
         $user->update($data);
 
-        return response()->json($user->load('organization'));
+        return new UserResource($user->load('organization'));
     }
 
     /**
@@ -116,6 +150,7 @@ class UserController extends Controller
         abort_if($this->isSelfUpdate($actor, $user), 403, 'You cannot deactivate your own account.');
         $this->assertCanManageTargetRole($actor, $user->role);
 
+        $this->deleteStoredAvatar($user->avatar_path);
         $user->tokens()->delete();
         $user->delete();
 
@@ -130,7 +165,7 @@ class UserController extends Controller
         $actor = $request->user();
         abort_unless($this->canViewStudentSubjects($actor, $user), 403, 'Access denied');
 
-        return response()->json($user->subjects()->get());
+        return SubjectResource::collection($user->subjects()->get());
     }
 
     /**
@@ -157,10 +192,11 @@ class UserController extends Controller
             'grade' => $data['grade'] ?? null,
         ]);
 
-        return response()->json(
-            $user->subjects()->where('subjects.id', $data['subject_id'])->first(),
-            201
-        );
+        $subject = $user->subjects()->where('subjects.id', $data['subject_id'])->first();
+
+        return (new SubjectResource($subject))
+            ->response()
+            ->setStatusCode(201);
     }
 
     /**
@@ -181,7 +217,7 @@ class UserController extends Controller
             'grade' => $data['grade'],
         ]);
 
-        return response()->json($user->subjects()->where('subjects.id', $subject->id)->first());
+        return new SubjectResource($user->subjects()->where('subjects.id', $subject->id)->first());
     }
 
     /**
@@ -197,6 +233,23 @@ class UserController extends Controller
         $user->subjects()->detach($subject->id);
 
         return response()->noContent();
+    }
+
+    private function avatarFileRule(): File
+    {
+        return File::types(['jpg', 'jpeg', 'png', 'webp', 'gif'])->max(2 * 1024);
+    }
+
+    private function storeAvatarFile(UploadedFile $file, int $userId): string
+    {
+        return $file->store('avatars/'.$userId, self::AVATAR_DISK);
+    }
+
+    private function deleteStoredAvatar(?string $path): void
+    {
+        if ($path && Storage::disk(self::AVATAR_DISK)->exists($path)) {
+            Storage::disk(self::AVATAR_DISK)->delete($path);
+        }
     }
 
     /** Список пользователей — только admin и NTI. */
@@ -373,7 +426,6 @@ class UserController extends Controller
             'birth_date' => ['sometimes', 'required', 'date'],
             'password' => ['sometimes', 'required', 'string', 'min:8'],
             'phone' => ['nullable', 'string', 'max:30'],
-            'avatar_path' => ['nullable', 'string', 'max:255'],
         ];
     }
 
@@ -387,7 +439,6 @@ class UserController extends Controller
             'birth_date' => ['sometimes', 'required', 'date'],
             'password' => ['sometimes', 'required', 'string', 'min:8'],
             'phone' => ['nullable', 'string', 'max:30'],
-            'avatar_path' => ['nullable', 'string', 'max:255'],
         ];
     }
 

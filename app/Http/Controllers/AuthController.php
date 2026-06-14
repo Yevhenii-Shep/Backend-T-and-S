@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -25,7 +26,6 @@ class AuthController extends Controller
             'birth_date' => ['required', 'date'],
             'password' => ['required', 'string', 'min:8', 'confirmed'],
             'phone' => ['nullable', 'string', 'max:30'],
-            'avatar_path' => ['nullable', 'string', 'max:255'],
         ]);
 
         $user = User::create([
@@ -35,7 +35,6 @@ class AuthController extends Controller
             'birth_date' => $data['birth_date'],
             'password' => $data['password'],
             'phone' => $data['phone'] ?? null,
-            'avatar_path' => $data['avatar_path'] ?? null,
             'organization_id' => null,
         ]);
 
@@ -43,7 +42,7 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $token,
-            'user' => $user->load('organization'),
+            'user' => new UserResource($user->load('organization')),
         ], 201);
     }
 
@@ -69,7 +68,7 @@ class AuthController extends Controller
 
         return response()->json([
             'token' => $token,
-            'user' => $user->load('organization'),
+            'user' => new UserResource($user->load('organization')),
         ]);
     }
 
@@ -90,23 +89,9 @@ class AuthController extends Controller
      */
     public function me(Request $request): JsonResponse
     {
-        $user = $request->user()->load('organization');
-
-        $activeTeam = $user->teams()
-            ->where('teams.is_active', true)
-            ->first();
-
-        return response()->json([
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'role' => $user->role,
-            'organization' => $user->organization,
-
-            // TEAMS
-            'active_team_id' => $activeTeam?->id,
-            'has_active_team' => $activeTeam !== null,
-        ]);
+        return response()->json(
+            new UserResource($request->user()->load('organization'))
+        );
     }
 
     /**

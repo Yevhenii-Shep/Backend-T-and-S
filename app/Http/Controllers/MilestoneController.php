@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ChecksProjectAccess;
+use App\Http\Resources\MilestoneResource;
 use App\Models\Milestone;
 use App\Models\Project;
 use Illuminate\Http\Request;
@@ -31,7 +32,7 @@ class MilestoneController extends Controller
             $query->where('project_id', $project->id);
         }
 
-        return response()->json($query->get());
+        return MilestoneResource::collection($query->get());
     }
 
     /**
@@ -55,7 +56,9 @@ class MilestoneController extends Controller
 
         $milestone = Milestone::create($data);
 
-        return response()->json($milestone->load('project'), 201);
+        return (new MilestoneResource($milestone->load('project')))
+            ->response()
+            ->setStatusCode(201);
     }
 
     /**
@@ -65,7 +68,7 @@ class MilestoneController extends Controller
     {
         abort_unless($this->canAccessProject($request->user(), $milestone->project), 403, 'Access denied');
 
-        return response()->json($milestone->load('project'));
+        return new MilestoneResource($milestone->load('project'));
     }
 
     /**
@@ -86,7 +89,7 @@ class MilestoneController extends Controller
 
         $milestone->update($data);
 
-        return response()->json($milestone->load('project'));
+        return new MilestoneResource($milestone->load('project'));
     }
 
     /**

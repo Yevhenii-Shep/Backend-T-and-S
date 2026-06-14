@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ChecksProjectAccess;
+use App\Http\Resources\EvaluationResource;
 use App\Models\Evaluation;
 use App\Models\Project;
 use App\Models\User;
@@ -32,7 +33,7 @@ class EvaluationController extends Controller
             $query->where('project_id', $project->id);
         }
 
-        return response()->json($query->get());
+        return EvaluationResource::collection($query->get());
     }
 
     /**
@@ -70,7 +71,9 @@ class EvaluationController extends Controller
 
         $evaluation = Evaluation::create($data);
 
-        return response()->json($evaluation->load(['project', 'evaluator']), 201);
+        return (new EvaluationResource($evaluation->load(['project', 'evaluator'])))
+            ->response()
+            ->setStatusCode(201);
     }
 
     /**
@@ -80,7 +83,7 @@ class EvaluationController extends Controller
     {
         abort_unless($this->canAccessProject($request->user(), $evaluation->project), 403, 'Access denied');
 
-        return response()->json($evaluation->load(['project', 'evaluator']));
+        return new EvaluationResource($evaluation->load(['project', 'evaluator']));
     }
 
     /**
@@ -99,7 +102,7 @@ class EvaluationController extends Controller
 
         $evaluation->update($data);
 
-        return response()->json($evaluation->load(['project', 'evaluator']));
+        return new EvaluationResource($evaluation->load(['project', 'evaluator']));
     }
 
     /**

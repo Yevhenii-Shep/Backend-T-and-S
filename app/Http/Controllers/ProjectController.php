@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ChecksProjectAccess;
+use App\Http\Resources\ProjectResource;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -16,6 +17,27 @@ class ProjectController extends Controller
 {
     use ChecksProjectAccess;
 
+    /** Связи для списка и карточки проекта (имена в ProjectResource). */
+    private function projectListRelations(): array
+    {
+        return ['team', 'organization', 'category', 'ntiMentor', 'organizationMentor'];
+    }
+
+    /** Связи для show/update с вложенными сущностями. */
+    private function projectDetailRelations(): array
+    {
+        return [
+            ...$this->projectListRelations(),
+            'documents.project',
+            'milestones.project',
+            'auditEvents.project',
+            'auditEvents.mainAuditor',
+            'auditEvents.participants.user',
+            'evaluations.project',
+            'evaluations.evaluator',
+        ];
+    }
+
     /**
      * GET /api/projects — список доступных проектов.
      * Фильтры: status, organization_id, team_id, category_id.
@@ -24,7 +46,7 @@ class ProjectController extends Controller
     {
         $user = $request->user();
         $query = Project::query()
-            ->with(['team', 'organization', 'category']);
+            ->with($this->projectListRelations());
 
         $this->applyProjectVisibility($query, $user);
 
@@ -46,7 +68,7 @@ class ProjectController extends Controller
             $query->where('category_id', $request->integer('category_id'));
         }
 
-        return response()->json($query->get());
+        return ProjectResource::collection($query->get());
     }
 
     /**
@@ -83,10 +105,9 @@ class ProjectController extends Controller
 
         $project = Project::create($data);
 
-        return response()->json(
-            $project->load(['team', 'organization', 'category']),
-            201
-        );
+        return (new ProjectResource(
+            $project->load($this->projectListRelations())
+        ))->response()->setStatusCode(201);
     }
 
     /**
@@ -96,16 +117,8 @@ class ProjectController extends Controller
     {
         abort_unless($this->canAccessProject($request->user(), $project), 403, 'Access denied');
 
-        return response()->json(
-            $project->load([
-                'team',
-                'organization',
-                'category',
-                'documents',
-                'milestones',
-                'auditEvents',
-                'evaluations.evaluator',
-            ])
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
         );
     }
 
@@ -150,16 +163,8 @@ class ProjectController extends Controller
 
         $project->update($data);
 
-        return response()->json(
-            $project->load([
-                'team',
-                'organization',
-                'category',
-                'documents',
-                'milestones',
-                'auditEvents',
-                'evaluations.evaluator',
-            ])
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
         );
     }
 

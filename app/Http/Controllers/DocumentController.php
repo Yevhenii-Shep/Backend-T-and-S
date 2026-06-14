@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ChecksProjectAccess;
+use App\Http\Resources\DocumentResource;
 use App\Models\Document;
 use App\Models\Project;
 use Illuminate\Http\Request;
@@ -37,7 +38,7 @@ class DocumentController extends Controller
             $query->where('project_id', $project->id);
         }
 
-        return response()->json($query->get());
+        return DocumentResource::collection($query->get());
     }
 
     /**
@@ -65,7 +66,9 @@ class DocumentController extends Controller
             'file_path' => $this->storeUploadedFile($data['file'], $project->id),
         ]);
 
-        return response()->json($document->load('project'), 201);
+        return (new DocumentResource($document->load('project')))
+            ->response()
+            ->setStatusCode(201);
     }
 
     /**
@@ -75,7 +78,7 @@ class DocumentController extends Controller
     {
         abort_unless($this->canAccessProject($request->user(), $document->project), 403, 'Access denied');
 
-        return response()->json($document->load('project'));
+        return new DocumentResource($document->load('project'));
     }
 
     /**
@@ -115,7 +118,7 @@ class DocumentController extends Controller
 
         $document->update($data);
 
-        return response()->json($document->load('project'));
+        return new DocumentResource($document->load('project'));
     }
 
     /**

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ChecksProjectAccess;
+use App\Http\Resources\AuditEventResource;
+use App\Http\Resources\AuditParticipantResource;
 use App\Models\AuditEvent;
 use App\Models\AuditParticipant;
 use App\Models\Project;
@@ -36,7 +38,7 @@ class AuditEventController extends Controller
             $query->where('project_id', $project->id);
         }
 
-        return response()->json($query->get());
+        return AuditEventResource::collection($query->get());
     }
 
     /**
@@ -61,10 +63,9 @@ class AuditEventController extends Controller
 
         $auditEvent = AuditEvent::create($data);
 
-        return response()->json(
-            $auditEvent->load(['project', 'mainAuditor', 'participants.user']),
-            201
-        );
+        return (new AuditEventResource(
+            $auditEvent->load(['project', 'mainAuditor', 'participants.user'])
+        ))->response()->setStatusCode(201);
     }
 
     /**
@@ -74,7 +75,7 @@ class AuditEventController extends Controller
     {
         abort_unless($this->canAccessAudit($request->user(), $auditEvent), 403, 'Access denied');
 
-        return response()->json(
+        return new AuditEventResource(
             $auditEvent->load(['project', 'mainAuditor', 'participants.user'])
         );
     }
@@ -107,7 +108,7 @@ class AuditEventController extends Controller
 
         $auditEvent->update($data);
 
-        return response()->json(
+        return new AuditEventResource(
             $auditEvent->load(['project', 'mainAuditor', 'participants.user'])
         );
     }
@@ -164,10 +165,9 @@ class AuditEventController extends Controller
             'role' => $data['role'],
         ]);
 
-        return response()->json(
-            $participant->load('user'),
-            201
-        );
+        return (new AuditParticipantResource($participant->load('user')))
+            ->response()
+            ->setStatusCode(201);
     }
 
     /**
