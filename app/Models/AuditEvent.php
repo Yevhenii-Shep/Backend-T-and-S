@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class AuditEvent extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     const RESULT_ACCEPTED = 1;
     const RESULT_DECLINED = 2;

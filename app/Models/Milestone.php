@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Milestone extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     // просто константы для статусов проекта, если тебе по логике будут нужны будут еще статусы или ты захочешь эти поменять просто допиши или поменяй
     // на датабазу это никак не повлияет
