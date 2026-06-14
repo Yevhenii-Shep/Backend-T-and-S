@@ -17,7 +17,7 @@ class MilestoneController extends Controller
     use ChecksProjectAccess;
 
     /**
-     * GET /api/milestones — список этапов (фильтр: project_id).
+     * GET /api/milestones — список этапов (фильтр: project_id или project_slug).
      */
     public function index(Request $request)
     {
@@ -26,8 +26,7 @@ class MilestoneController extends Controller
 
         $this->applyProjectChildVisibility($query, $user);
 
-        if ($request->filled('project_id')) {
-            $project = Project::findOrFail($request->integer('project_id'));
+        if ($project = $this->resolveProjectFromFilter($request)) {
             abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
             $query->where('project_id', $project->id);
         }
@@ -82,6 +81,7 @@ class MilestoneController extends Controller
 
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'slug' => ['sometimes', 'nullable', 'string', 'max:255', Rule::unique('milestones', 'slug')->ignore($milestone->id)],
             'description' => ['nullable', 'string'],
             'status' => ['sometimes', 'required', 'integer', Rule::in($this->milestoneStatuses())],
             'deadline' => ['nullable', 'date'],

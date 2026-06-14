@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Slug\HasSlug;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Milestone extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, HasSlug, SoftDeletes;
 
     // просто константы для статусов проекта, если тебе по логике будут нужны будут еще статусы или ты захочешь эти поменять просто допиши или поменяй
     // на датабазу это никак не повлияет
@@ -21,6 +22,7 @@ class Milestone extends Model
 
     protected $fillable = [
         'project_id',
+        'slug',
         'name',
         'status',
         'deadline',

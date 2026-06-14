@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Slug\HasSlug;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,7 +15,7 @@ use Laravel\Sanctum\HasApiTokens;
 class User extends Authenticatable
 {
     // Sanctum: createToken() / currentAccessToken() для login и logout
-    use HasApiTokens, HasFactory, Notifiable, SoftDeletes;
+    use HasApiTokens, HasFactory, HasSlug, Notifiable, SoftDeletes;
 
     const ROLE_ADMIN = 1;
     const ROLE_STUDENT = 2;
@@ -27,6 +28,7 @@ class User extends Authenticatable
     protected $fillable = [
         'role',
         'name',
+        'slug',
         'email',
         'organization_id',
         'birth_date',

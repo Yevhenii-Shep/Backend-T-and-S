@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Slug\HasSlug;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Evaluation extends Model
 {
-    use HasFactory;
+    use HasFactory, HasSlug;
 
     protected $table = 'evaluations';
 
@@ -15,6 +16,7 @@ class Evaluation extends Model
         'score',
         'comment',
         'project_id',
+        'slug',
         'evaluator_id',
     ];
 
@@ -28,5 +30,10 @@ class Evaluation extends Model
     public function evaluator()
     {
         return $this->belongsTo(User::class, 'evaluator_id');
+    }
+
+    protected function slugBase(): string
+    {
+        return 'evaluation-'.$this->project_id.'-'.$this->evaluator_id;
     }
 }

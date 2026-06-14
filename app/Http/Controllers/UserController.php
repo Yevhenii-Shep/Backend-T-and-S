@@ -74,6 +74,7 @@ class UserController extends Controller
         $data = $request->validate([
             'role' => ['required', 'integer', Rule::in($this->assignableRoles($actor))],
             'name' => ['required', 'string', 'max:255'],
+            'slug' => ['nullable', 'string', 'max:255', 'unique:users,slug'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
             'birth_date' => ['required', 'date'],
@@ -434,6 +435,7 @@ class UserController extends Controller
         return [
             'role' => ['sometimes', 'required', 'integer', Rule::in($this->assignableRoles($actor))],
             'name' => ['sometimes', 'required', 'string', 'max:255'],
+            'slug' => ['sometimes', 'nullable', 'string', 'max:255', Rule::unique('users', 'slug')->ignore($user->id)],
             'email' => ['sometimes', 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
             'birth_date' => ['sometimes', 'required', 'date'],

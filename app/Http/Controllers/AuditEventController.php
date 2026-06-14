@@ -22,7 +22,7 @@ class AuditEventController extends Controller
     use ChecksProjectAccess;
 
     /**
-     * GET /api/audit-events — список аудитов (фильтр: project_id).
+     * GET /api/audit-events — список аудитов (фильтр: project_id или project_slug).
      */
     public function index(Request $request)
     {
@@ -32,8 +32,7 @@ class AuditEventController extends Controller
 
         $this->applyProjectChildVisibility($query, $user);
 
-        if ($request->filled('project_id')) {
-            $project = Project::findOrFail($request->integer('project_id'));
+        if ($project = $this->resolveProjectFromFilter($request)) {
             abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
             $query->where('project_id', $project->id);
         }

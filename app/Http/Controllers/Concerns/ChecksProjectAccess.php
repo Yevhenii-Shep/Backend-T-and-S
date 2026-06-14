@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Concerns;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
 
 /**
  * Общие проверки доступа к проекту и связанным сущностям.
@@ -158,8 +159,23 @@ trait ChecksProjectAccess
         ];
     }
 
+    /** Фильтр index: project_id или project_slug (variant C для query). */
+    private function resolveProjectFromFilter(Request $request): ?Project
+    {
+        if ($request->filled('project_id')) {
+            return Project::findOrFail($request->integer('project_id'));
+        }
+
+        if ($request->filled('project_slug')) {
+            return Project::query()
+                ->where('slug', $request->string('project_slug'))
+                ->firstOrFail();
+        }
+
+        return null;
+    }
+
     /**
-     * Org admin не может сужать выборку по чужой organization_id.
      * Остальные роли — без доп. ограничений (уже есть applyProjectVisibility).
      */
     private function assertCanFilterByOrganization(User $user, int $organizationId): void

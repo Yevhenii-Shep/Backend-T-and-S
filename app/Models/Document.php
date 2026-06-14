@@ -2,18 +2,20 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\Slug\HasSlug;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Document extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory, HasSlug, SoftDeletes;
 
     protected $table = 'documents';
 
     protected $fillable = [
         'project_id',
+        'slug',
         'name',
         'description',
         'file_path',
@@ -23,5 +25,14 @@ class Document extends Model
     public function project()
     {
         return $this->belongsTo(Project::class);
+    }
+
+    protected function slugBase(): string
+    {
+        if (!empty($this->name)) {
+            return (string) $this->name;
+        }
+
+        return 'document-'.($this->id ?? $this->project_id);
     }
 }

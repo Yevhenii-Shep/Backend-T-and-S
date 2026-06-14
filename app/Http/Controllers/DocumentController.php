@@ -23,7 +23,7 @@ class DocumentController extends Controller
     private const DOCUMENT_DISK = 'public';
 
     /**
-     * GET /api/documents — список документов (фильтр: project_id).
+     * GET /api/documents — список документов (фильтр: project_id или project_slug).
      */
     public function index(Request $request)
     {
@@ -32,8 +32,7 @@ class DocumentController extends Controller
 
         $this->applyProjectChildVisibility($query, $user);
 
-        if ($request->filled('project_id')) {
-            $project = Project::findOrFail($request->integer('project_id'));
+        if ($project = $this->resolveProjectFromFilter($request)) {
             abort_unless($this->canAccessProject($user, $project), 403, 'Access denied');
             $query->where('project_id', $project->id);
         }
@@ -106,6 +105,7 @@ class DocumentController extends Controller
 
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
+            'slug' => ['sometimes', 'nullable', 'string', 'max:255', Rule::unique('documents', 'slug')->ignore($document->id)],
             'description' => ['nullable', 'string'],
             'file' => ['sometimes', 'required', 'file', $this->documentFileRule()],
         ]);

@@ -111,7 +111,7 @@ class ProjectController extends Controller
     }
 
     /**
-     * GET /api/projects/{project} — проект с документами, этапами и аудитами.
+     * GET /api/projects/{project} — проект по id или slug (с документами, этапами, аудитами).
      */
     public function show(Request $request, Project $project)
     {

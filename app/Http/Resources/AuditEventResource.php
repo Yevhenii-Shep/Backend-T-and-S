@@ -12,6 +12,7 @@ class AuditEventResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'slug' => $this->slug,
             'project_id' => $this->project_id,
             'project_name' => $this->whenLoaded('project', fn () => $this->project?->name),
             'result' => $this->result,
