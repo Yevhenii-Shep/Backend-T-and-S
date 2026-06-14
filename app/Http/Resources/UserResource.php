@@ -11,6 +11,10 @@ class UserResource extends JsonResource
 {
     public function toArray(Request $request): array
     {
+        $activeTeam = $this->teams
+            ->where('is_active', true)
+            ->first();
+
         return [
             'id' => $this->id,
             'role' => $this->role,
@@ -29,7 +33,10 @@ class UserResource extends JsonResource
 
             'organization' => OrganizationResource::make($this->whenLoaded('organization')),
             'subjects' => SubjectResource::collection($this->whenLoaded('subjects')),
-            // Все команды (текущие и прошлые); leave_date != null — пользователь вышел
+            // Teams
+            'active_team_id' => $activeTeam?->id,
+            'has_active_team' => $activeTeam !== null,
+
             'teams' => TeamResource::collection($this->teams),
         ];
     }
