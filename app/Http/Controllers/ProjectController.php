@@ -29,6 +29,7 @@ class ProjectController extends Controller
     {
         return [
             ...$this->projectListRelations(),
+            'team.users',
             'documents.project',
             'milestones.project',
             'auditEvents.project',
@@ -62,7 +63,9 @@ class ProjectController extends Controller
         }
 
         if ($request->filled('team_id')) {
-            $query->where('team_id', $request->integer('team_id'));
+            $teamId = $request->integer('team_id');
+            $this->assertCanFilterByTeam($user, $teamId);
+            $query->where('team_id', $teamId);
         }
 
         if ($request->filled('category_id')) {
@@ -81,7 +84,7 @@ class ProjectController extends Controller
         abort_unless($this->canCreateProject($user), 403, 'Access denied');
 
         $teamIdRules = $user->role === User::ROLE_STUDENT
-            ? ['required', 'integer', 'exists:teams,id']
+            ? ['prohibited']
             : ['nullable', 'integer', 'exists:teams,id'];
 
         $data = $request->validate([
@@ -105,7 +108,9 @@ class ProjectController extends Controller
         }
 
         if ($user->role === User::ROLE_STUDENT) {
-            $this->assertStudentBelongsToTeam($user, (int) $data['team_id']);
+            $teamId = $this->activeTeamIdForStudent($user);
+            abort_unless($teamId, 422, 'You must belong to an active team to create a project.');
+            $data['team_id'] = $teamId;
         }
 
         $project = Project::create($data);
@@ -210,7 +215,7 @@ class ProjectController extends Controller
     public function assignTeam(Request $request, Project $project)
     {
         $user = $request->user();
-        abort_unless($this->canAdminAssignProjectRelations($user), 403, 'Access denied');
+        abort_unless($this->canAssignTeamToProject($user, $project), 403, 'Access denied');
         abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
 
         $data = $request->validate([
@@ -230,7 +235,7 @@ class ProjectController extends Controller
     public function assignOrganization(Request $request, Project $project)
     {
         $user = $request->user();
-        abort_unless($this->canAdminAssignProjectRelations($user), 403, 'Access denied');
+        abort_unless($this->canAssignOrganizationToProject($user, $project), 403, 'Access denied');
         abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
 
         $data = $request->validate([
@@ -238,6 +243,11 @@ class ProjectController extends Controller
         ]);
 
         $organizationId = $data['organization_id'] ?? null;
+
+        if (in_array($user->role, [User::ROLE_ORGANIZATION_ADMIN, User::ROLE_ORGANIZATION_EMPLOYEE], true)) {
+            $organizationId = $user->organization_id;
+        }
+
         $update = ['organization_id' => $organizationId];
 
         if ($project->mentor_from_organization) {

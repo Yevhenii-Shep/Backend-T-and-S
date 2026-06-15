@@ -52,10 +52,117 @@ trait ChecksProjectAccess
         return $this->settableProgramTypes();
     }
 
-    /** Назначение команды, организации или категории — только admin. */
+    /** Назначение категории — только admin. */
     private function canAdminAssignProjectRelations(User $user): bool
     {
         return $user->role === User::ROLE_ADMIN;
+    }
+
+    /**
+     * Назначить команду проекту: admin — любой проект;
+     * org — только проекты своей организации.
+     */
+    private function canAssignTeamToProject(User $user, Project $project): bool
+    {
+        if ($user->role === User::ROLE_ADMIN) {
+            return true;
+        }
+
+        if (in_array($user->role, [User::ROLE_ORGANIZATION_ADMIN, User::ROLE_ORGANIZATION_EMPLOYEE], true)) {
+            return $this->canWriteProject($user, $project);
+        }
+
+        return false;
+    }
+
+    /**
+     * Привязать организацию к проекту: admin — любая org;
+     * org — только своя org к доступным проектам (свои или program A без чужой org).
+     */
+    private function canAssignOrganizationToProject(User $user, Project $project): bool
+    {
+        if ($user->role === User::ROLE_ADMIN) {
+            return true;
+        }
+
+        if (!in_array($user->role, [User::ROLE_ORGANIZATION_ADMIN, User::ROLE_ORGANIZATION_EMPLOYEE], true)) {
+            return false;
+        }
+
+        if (!$user->organization_id || !$this->canOrgAccessProject($user, $project)) {
+            return false;
+        }
+
+        if ($project->organization_id && (int) $project->organization_id !== (int) $user->organization_id) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /** Загрузка документов: staff с write-доступом или студент команды проекта. */
+    private function canUploadProjectDocuments(User $user, Project $project): bool
+    {
+        if ($this->canModifyResources($user) && $this->canWriteProject($user, $project)) {
+            return true;
+        }
+
+        if ($user->role === User::ROLE_STUDENT) {
+            return $this->studentBelongsToProjectTeam($user, $project);
+        }
+
+        return false;
+    }
+
+    /** Студент состоит в команде проекта. */
+    private function studentBelongsToProjectTeam(User $user, Project $project): bool
+    {
+        if ($user->role !== User::ROLE_STUDENT || !$project->team_id) {
+            return false;
+        }
+
+        return $project->team()
+            ->whereHas('users', fn ($teamUsers) => $teamUsers->where('users.id', $user->id))
+            ->exists();
+    }
+
+    /** ID активной команды студента или null. */
+    private function activeTeamIdForStudent(User $user): ?int
+    {
+        if ($user->role !== User::ROLE_STUDENT) {
+            return null;
+        }
+
+        $teamId = $user->teams()
+            ->where('teams.is_active', true)
+            ->wherePivotNull('leave_date')
+            ->value('teams.id');
+
+        return $teamId ? (int) $teamId : null;
+    }
+
+    /** Студент не может фильтровать проекты по чужой команде. */
+    private function assertCanFilterByTeam(User $user, int $teamId): void
+    {
+        if ($user->role !== User::ROLE_STUDENT) {
+            return;
+        }
+
+        abort_unless($this->studentBelongsToTeamId($user, $teamId), 403, 'Access denied');
+    }
+
+    /** Студент — участник команды с указанным id. */
+    private function studentBelongsToTeamId(User $user, int $teamId): bool
+    {
+        if ($user->role !== User::ROLE_STUDENT) {
+            return false;
+        }
+
+        return $user->teams()
+            ->where('teams.id', $teamId)
+            ->where('teams.is_active', true)
+            ->wherePivotNull('leave_date')
+            ->exists();
     }
 
     /** Назначение NTI-ментора — admin и NTI. */

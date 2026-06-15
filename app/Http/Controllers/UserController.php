@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Resources\SubjectResource;
 use App\Http\Resources\UserResource;
+use App\Models\Project;
 use App\Models\Subject;
 use App\Models\User;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -68,6 +70,18 @@ class UserController extends Controller
         ]);
 
         return new UserResource($user->load('organization'));
+    }
+
+    /** DELETE /api/users/me — деактивировать свой аккаунт. */
+    public function destroyMe(Request $request)
+    {
+        $user = $request->user();
+
+        $this->deleteStoredAvatar($user->avatar_path);
+        $user->tokens()->delete();
+        $user->delete();
+
+        return response()->noContent();
     }
 
     /** POST /api/users — создать пользователя (только admin и NTI). */
@@ -309,7 +323,11 @@ class UserController extends Controller
                 return false;
             }
 
-            return (int) $user->organization_id === (int) $actor->organization_id;
+            if ((int) $user->organization_id === (int) $actor->organization_id) {
+                return true;
+            }
+
+            return $user->role === User::ROLE_STUDENT && $this->orgCanViewStudent($actor, $user);
         }
 
         if ($actor->role === User::ROLE_STUDENT) {
@@ -330,7 +348,35 @@ class UserController extends Controller
             return true;
         }
 
+        if (in_array($actor->role, [User::ROLE_ORGANIZATION_ADMIN, User::ROLE_ORGANIZATION_EMPLOYEE], true)) {
+            return $this->orgCanViewStudent($actor, $user);
+        }
+
         return $this->isSelfUpdate($actor, $user);
+    }
+
+    /**
+     * Org может просматривать студента, если он в команде проекта,
+     * доступного организации (свои проекты или program A).
+     */
+    private function orgCanViewStudent(User $actor, User $student): bool
+    {
+        if ($student->role !== User::ROLE_STUDENT || !$actor->organization_id) {
+            return false;
+        }
+
+        return Project::query()
+            ->where('status', '!=', Project::STATUS_INACTIVE)
+            ->where(function (Builder $orgQuery) use ($actor) {
+                $orgQuery
+                    ->where('organization_id', $actor->organization_id)
+                    ->orWhere('program_type', Project::PROGRAM_TYPE_A);
+            })
+            ->whereHas(
+                'team.users',
+                fn (Builder $teamUsers) => $teamUsers->where('users.id', $student->id)
+            )
+            ->exists();
     }
 
     /** Actor редактирует свой аккаунт. */

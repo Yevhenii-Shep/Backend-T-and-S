@@ -49,7 +49,6 @@ class DocumentController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        abort_unless($this->canModifyResources($user), 403, 'Access denied');
 
         $data = $request->validate([
             'project_id' => ['required', 'integer', 'exists:projects,id'],
@@ -59,7 +58,7 @@ class DocumentController extends Controller
         ]);
 
         $project = Project::findOrFail($data['project_id']);
-        abort_unless($this->canWriteProject($user, $project), 403, 'Access denied');
+        abort_unless($this->canUploadProjectDocuments($user, $project), 403, 'Access denied');
         $this->assertProjectAcceptsDocument($user, $project);
 
         $document = Document::create([

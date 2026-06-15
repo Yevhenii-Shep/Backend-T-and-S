@@ -29,6 +29,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('throttle:5,1');
 
     Route::post('users/me/avatar', [UserController::class, 'updateAvatar']);
+    Route::delete('users/me', [UserController::class, 'destroyMe']);
 
     Route::apiResource('users', UserController::class);
 
