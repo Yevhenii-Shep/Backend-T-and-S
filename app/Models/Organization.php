@@ -3,11 +3,13 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use App\Models\Concerns\Slug\HasSlug;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Organization extends Model
 {
     use HasFactory;
+    use HasSlug;
 
     protected $table = 'organizations';
 

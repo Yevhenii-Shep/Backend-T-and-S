@@ -89,7 +89,7 @@ class ProjectController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', 'unique:projects,slug'],
+            'slug' => ['nullable', 'string', 'max:255', 'unique:projects,slug'],
             'team_id' => $teamIdRules,
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
             'program_type' => ['required', 'integer', Rule::in($this->creatableProgramTypesForUser($user))],
@@ -138,8 +138,17 @@ class ProjectController extends Controller
     public function update(Request $request, Project $project)
     {
         $user = $request->user();
-        abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($this->canWriteProject($user, $project), 403, 'Access denied');
+
+        if ($user->role === User::ROLE_STUDENT) { // Студент если это проект его команды
+            $activeUsersTeam = $user->teams()
+                ->where('teams.is_active', true)
+                ->first();
+            if (!$activeUsersTeam) abort(403, 'Accesss denied');
+            abort_unless($project->team_id === $activeUsersTeam->id, 403, 'Accesss denied');
+        } else { // Все остальные
+            abort_unless($this->canModifyResources($user), 403, 'Access denied');
+            abort_unless($this->canWriteProject($user, $project), 403, 'Access denied');
+        }
 
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:255'],

@@ -17,7 +17,7 @@ class TeamController extends Controller
     public function index(Request $request)
     {
         $query = Team::query()
-            ->select(["id", "name", "description", "is_active"]);
+            ->select(["id", "name", "slug", "description", "is_active"]);
 
         // фильтр по статусу
         if ($request->filled('status')) {
@@ -42,7 +42,7 @@ class TeamController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', 'unique:teams,slug'],
+            'slug' => ['nullable', 'string', 'max:255', 'unique:teams,slug'],
             'description' => ['nullable', 'string'],
 
             // admin может создать и неактивную команду
@@ -96,7 +96,7 @@ class TeamController extends Controller
 
         $team = Team::create([
             'name' => $data['name'],
-            'slug' => $data['slug'],
+            'slug' => $data['slug'] ?? null,
             'description' => $data['description'] ?? null,
             'is_active' => $isActive,
 

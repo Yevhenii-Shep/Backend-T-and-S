@@ -28,8 +28,8 @@ class CategoryController extends Controller
         );
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', 'unique:categories,slug'],
+            'name' => ['required', 'string', 'max:255', 'unique:categories,name'],
+            'slug' => ['nullable', 'string', 'max:255', 'unique:categories,slug'],
             'description' => ['nullable', 'string'],
 
             'subjects' => ['nullable', 'array'],
@@ -38,7 +38,7 @@ class CategoryController extends Controller
 
         $category = Category::create([
             'name' => $data['name'],
-            'slug' => $data['slug'],
+            'slug' => $data['slug'] ?? null,
             'description' => $data['description'] ?? null,
         ]);
 

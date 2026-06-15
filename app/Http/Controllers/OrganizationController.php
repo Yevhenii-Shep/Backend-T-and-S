@@ -30,7 +30,7 @@ class OrganizationController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', 'unique:organizations,slug'],
+            'slug' => ['nullable', 'string', 'max:255', 'unique:organizations,slug'],
             'logo_path' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
             'website_url' => ['nullable', 'string'],

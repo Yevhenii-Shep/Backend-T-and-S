@@ -4,10 +4,12 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use App\Models\Concerns\Slug\HasSlug;
 
 class Project extends Model
 {
     use HasFactory;
+    use HasSlug;
 
     // просто константы для статусов проекта, если тебе по логике будут нужны будут еще статусы или ты захочешь эти поменять просто допиши или поменяй
     // на датабазу это никак не повлияет
