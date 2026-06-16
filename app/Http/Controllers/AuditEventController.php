@@ -48,19 +48,19 @@ class AuditEventController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        abort_unless($this->canModifyResources($user), 403, 'Access denied');
 
         $data = $request->validate($this->storeRules($user));
 
         $project = Project::findOrFail($data['project_id']);
-        abort_unless($this->canWriteProject($user, $project), 403, 'Access denied');
+        abort_unless($this->canScheduleProjectAudit($user, $project), 403, 'Access denied');
+        abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
         $this->assertProjectAcceptsAudit($user, $project);
+        $this->assertProjectPendingForAudit($project);
+        $this->assertProjectHasNoAudit($project);
         $this->assertAuditorBelongsToProject($data['main_auditor'], $project);
         $this->assertScheduleOnCreate($user, $data);
 
-        if (!$this->isAdmin($user)) {
-            unset($data['result']);
-        }
+        unset($data['result']);
 
         $auditEvent = AuditEvent::create($data);
 
@@ -88,8 +88,7 @@ class AuditEventController extends Controller
     public function update(Request $request, AuditEvent $auditEvent)
     {
         $user = $request->user();
-        abort_unless($this->canModifyResources($user), 403, 'Access denied');
-        abort_unless($this->canWriteAudit($user, $auditEvent), 403, 'Access denied');
+        abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
 
         $data = $request->validate($this->updateRules($user));
 
@@ -97,17 +96,29 @@ class AuditEventController extends Controller
         $endTime = $data['end_time'] ?? $auditEvent->end_time;
 
         $this->assertEndAfterStart($startTime, $endTime);
-        $this->assertScheduleOnUpdate($user, $data, $auditEvent);
 
-        if (array_key_exists('result', $data) && $data['result'] !== null) {
+        if (array_key_exists('result', $data)) {
+            abort_unless($this->canSetAuditResult($user, $auditEvent), 403, 'Access denied');
             $this->assertResultOnlyAfterEnd($endTime);
+
+            if ($data['result'] !== null) {
+                $this->assertAuditResultNotFinal($auditEvent);
+            }
+        } else {
+            abort_unless($this->canScheduleProjectAudit($user, $auditEvent->project), 403, 'Access denied');
+            $this->assertScheduleOnUpdate($user, $data, $auditEvent);
         }
 
         if (isset($data['main_auditor'])) {
+            abort_unless($this->canScheduleProjectAudit($user, $auditEvent->project), 403, 'Access denied');
             $this->assertAuditorBelongsToProject($data['main_auditor'], $auditEvent->project, 'main_auditor');
         }
 
         $auditEvent->update($data);
+
+        if (array_key_exists('result', $data) && $data['result'] !== null) {
+            $this->applyAuditResultToProject($auditEvent->fresh(['project']));
+        }
 
         return new AuditEventResource(
             $auditEvent->load(['project', 'mainAuditor', 'participants.user'])
@@ -227,6 +238,56 @@ class AuditEventController extends Controller
         ]);
     }
 
+    /** Первый аудит — только для проекта в ожидании. */
+    private function assertProjectPendingForAudit(Project $project): void
+    {
+        if ($project->status !== Project::STATUS_PENGING) {
+            throw ValidationException::withMessages([
+                'project_id' => ['Audit can only be scheduled for a pending project.'],
+            ]);
+        }
+    }
+
+    /** На проект можно назначить только один аудит. */
+    private function assertProjectHasNoAudit(Project $project): void
+    {
+        if ($project->auditEvents()->exists()) {
+            throw ValidationException::withMessages([
+                'project_id' => ['This project already has an audit scheduled.'],
+            ]);
+        }
+    }
+
+    /** Итог аудита нельзя менять повторно. */
+    private function assertAuditResultNotFinal(AuditEvent $auditEvent): void
+    {
+        if ($auditEvent->result !== null) {
+            throw ValidationException::withMessages([
+                'result' => ['Audit result has already been set.'],
+            ]);
+        }
+    }
+
+    /** Принять / отклонить проект по итогу аудита. */
+    private function applyAuditResultToProject(AuditEvent $auditEvent): void
+    {
+        $project = $auditEvent->project;
+
+        if (!$project || $auditEvent->result === null) {
+            return;
+        }
+
+        if ($auditEvent->result === AuditEvent::RESULT_ACCEPTED) {
+            $project->update(['status' => Project::STATUS_ACTIVE]);
+
+            return;
+        }
+
+        if ($auditEvent->result === AuditEvent::RESULT_DECLINED) {
+            $project->update(['status' => Project::STATUS_PENGING]);
+        }
+    }
+
     /** Главный/участник-аудитор: роль auditor + org проекта (admin/NTI — без ограничения org). */
     private function assertAuditorBelongsToProject(int $userId, ?Project $project, string $field = 'main_auditor'): void
     {
@@ -326,12 +387,11 @@ class AuditEventController extends Controller
             'end_time' => ['required', 'date', 'after:start_time'],
         ];
 
-        if ($this->isAdmin($user)) {
-            $rules['result'] = ['nullable', 'integer', Rule::in([AuditEvent::RESULT_ACCEPTED, AuditEvent::RESULT_DECLINED])];
-        } else {
+        if (!$this->isAdmin($user)) {
             $rules['start_time'][] = 'after:now';
-            $rules['result'] = ['prohibited'];
         }
+
+        $rules['result'] = ['prohibited'];
 
         return $rules;
     }
@@ -348,7 +408,6 @@ class AuditEventController extends Controller
 
         if (!$this->isAdmin($user)) {
             $rules['start_time'][] = 'after:now';
-            // Нельзя сдвинуть end_time в прошлое, чтобы досрочно выставить result.
             $rules['end_time'][] = 'after:now';
         }
 

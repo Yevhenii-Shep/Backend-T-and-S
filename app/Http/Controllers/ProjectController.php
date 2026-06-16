@@ -99,6 +99,10 @@ class ProjectController extends Controller
             'deadline' => ['nullable', 'date'],
         ]);
 
+        if ($user->role === User::ROLE_ORGANIZATION_EMPLOYEE) {
+            abort_unless($user->organization_id, 422, 'You must belong to an organization to create a project.');
+        }
+
         if ($user->role === User::ROLE_ORGANIZATION_ADMIN) {
             $data['organization_id'] = $user->organization_id;
         }

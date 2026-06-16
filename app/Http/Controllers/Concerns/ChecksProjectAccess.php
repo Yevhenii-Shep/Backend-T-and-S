@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Models\AuditEvent;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
@@ -25,9 +26,12 @@ trait ChecksProjectAccess
     /** Может создавать проект (студент — только тип A / financovanie). */
     private function canCreateProject(User $user): bool
     {
+        if ($user->role === User::ROLE_ORGANIZATION_EMPLOYEE) {
+            return (bool) $user->organization_id;
+        }
+
         return in_array($user->role, [
             User::ROLE_ADMIN,
-            User::ROLE_ORGANIZATION_EMPLOYEE,
             User::ROLE_ORGANIZATION_ADMIN,
             User::ROLE_NTI_EMPLOYEE,
             User::ROLE_STUDENT,
@@ -58,21 +62,36 @@ trait ChecksProjectAccess
         return $user->role === User::ROLE_ADMIN;
     }
 
-    /**
-     * Назначить команду проекту: admin — любой проект;
-     * org — только проекты своей организации.
-     */
+    /** Команда проекта не меняется после создания. */
     private function canAssignTeamToProject(User $user, Project $project): bool
+    {
+        return false;
+    }
+
+    /**
+     * Назначить первый аудит: admin, NTI или org admin для доступного проекта.
+     */
+    private function canScheduleProjectAudit(User $user, Project $project): bool
+    {
+        if ($user->role === User::ROLE_ADMIN || $user->role === User::ROLE_NTI_EMPLOYEE) {
+            return true;
+        }
+
+        if ($user->role === User::ROLE_ORGANIZATION_ADMIN && $user->organization_id) {
+            return $this->canOrgAccessProject($user, $project);
+        }
+
+        return false;
+    }
+
+    /** Главный аудитор (или admin) выставляет итог аудита после его завершения. */
+    private function canSetAuditResult(User $user, AuditEvent $auditEvent): bool
     {
         if ($user->role === User::ROLE_ADMIN) {
             return true;
         }
 
-        if (in_array($user->role, [User::ROLE_ORGANIZATION_ADMIN, User::ROLE_ORGANIZATION_EMPLOYEE], true)) {
-            return $this->canWriteProject($user, $project);
-        }
-
-        return false;
+        return $auditEvent->main_auditor && (int) $auditEvent->main_auditor === (int) $user->id;
     }
 
     /**
@@ -254,9 +273,7 @@ trait ChecksProjectAccess
         }
 
         if ($user->role === User::ROLE_STUDENT) {
-            return $project->team()
-                ->whereHas('users', fn ($users) => $users->where('users.id', $user->id))
-                ->exists();
+            return true;
         }
 
         return false;
@@ -313,10 +330,7 @@ trait ChecksProjectAccess
         }
 
         if ($user->role === User::ROLE_STUDENT) {
-            return $query->whereHas(
-                'team.users',
-                fn ($teamUsers) => $teamUsers->where('users.id', $user->id)
-            );
+            return $query;
         }
 
         return $query->whereRaw('0 = 1');
