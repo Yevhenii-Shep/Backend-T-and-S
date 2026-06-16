@@ -133,8 +133,11 @@ class DocumentController extends Controller
     public function destroy(Request $request, Document $document)
     {
         $user = $request->user();
-        abort_unless($this->canDeactivateResources($user), 403, 'Access denied');
-        abort_unless($document->project && $this->canWriteProject($user, $document->project), 403, 'Access denied');
+        abort_unless(
+            $document->project && $this->canDeleteProjectDocuments($user, $document->project),
+            403,
+            'Access denied'
+        );
 
         $this->deleteStoredFile($document->file_path);
         $document->delete();

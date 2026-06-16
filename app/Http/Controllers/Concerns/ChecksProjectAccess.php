@@ -114,6 +114,20 @@ trait ChecksProjectAccess
         return false;
     }
 
+    /** Удаление документов: staff с write-доступом или студент команды проекта. */
+    private function canDeleteProjectDocuments(User $user, Project $project): bool
+    {
+        if ($this->canModifyResources($user) && $this->canWriteProject($user, $project)) {
+            return true;
+        }
+
+        if ($user->role === User::ROLE_STUDENT) {
+            return $this->studentBelongsToProjectTeam($user, $project);
+        }
+
+        return false;
+    }
+
     /** Студент состоит в команде проекта. */
     private function studentBelongsToProjectTeam(User $user, Project $project): bool
     {
@@ -349,6 +363,23 @@ trait ChecksProjectAccess
             Project::STATUS_ACTIVE,
             Project::STATUS_DONE,
         ];
+    }
+
+    /** Допустимые статусы при создании проекта по роли. */
+    private function creatableProjectStatusesForUser(User $user): array
+    {
+        if (in_array($user->role, [
+            User::ROLE_STUDENT,
+            User::ROLE_ORGANIZATION_ADMIN,
+            User::ROLE_ORGANIZATION_EMPLOYEE,
+        ], true)) {
+            return [
+                Project::STATUS_PENGING,
+                Project::STATUS_ACTIVE,
+            ];
+        }
+
+        return $this->settableProjectStatuses();
     }
 
     /** Допустимые типы программы проекта. */

@@ -94,7 +94,7 @@ class ProjectController extends Controller
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
             'program_type' => ['required', 'integer', Rule::in($this->creatableProgramTypesForUser($user))],
             'category_id' => ['required', 'integer', 'exists:categories,id'],
-            'status' => ['required', 'integer', Rule::in($this->settableProjectStatuses())],
+            'status' => ['required', 'integer', Rule::in($this->creatableProjectStatusesForUser($user))],
             'description' => ['nullable', 'string'],
             'deadline' => ['nullable', 'date'],
         ]);
