@@ -62,10 +62,11 @@ trait ChecksProjectAccess
         return $user->role === User::ROLE_ADMIN;
     }
 
-    /** Команда проекта не меняется после создания. */
+    /** Назначить команду: NTI staff, только program B. */
     private function canAssignTeamToProject(User $user, Project $project): bool
     {
-        return false;
+        return (int) $project->program_type === Project::PROGRAM_TYPE_B
+            && in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true);
     }
 
     /** Назначить аудит: admin или сотрудник NTI. */
