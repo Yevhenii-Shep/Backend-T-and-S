@@ -250,6 +250,11 @@ class ProjectController extends Controller
     public function assignOrganization(Request $request, Project $project)
     {
         $user = $request->user();
+
+        if (in_array($user->role, [User::ROLE_ORGANIZATION_ADMIN, User::ROLE_ORGANIZATION_EMPLOYEE], true)) {
+            abort(403, 'Organization can only accept a project after a successful audit.');
+        }
+
         abort_unless($this->canAssignOrganizationToProject($user, $project), 403, 'Access denied');
         abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
 
