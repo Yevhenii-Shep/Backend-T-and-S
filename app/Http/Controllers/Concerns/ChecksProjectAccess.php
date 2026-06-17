@@ -12,6 +12,8 @@ use Illuminate\Database\Eloquent\Builder;
  */
 trait ChecksProjectAccess
 {
+    // --- Роли: кто может создавать и менять сущности проекта ---
+
     /** Может создавать и изменять project / document / milestone / audit / evaluation. */
     private function canModifyResources(User $user): bool
     {
@@ -62,11 +64,17 @@ trait ChecksProjectAccess
         return $user->role === User::ROLE_ADMIN;
     }
 
-    /** Команда проекта не меняется после создания. */
+    /** Program B: admin и NTI могут назначать и менять команду проекта. */
     private function canAssignTeamToProject(User $user, Project $project): bool
     {
-        return false;
+        if ((int) $project->program_type !== Project::PROGRAM_TYPE_B) {
+            return false;
+        }
+
+        return in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true);
     }
+
+    // --- Аудит ---
 
     /** Назначить аудит: admin или сотрудник NTI. */
     private function canScheduleProjectAudit(User $user, Project $project): bool
@@ -123,11 +131,7 @@ trait ChecksProjectAccess
         return $audit && (int) $audit->result === AuditEvent::RESULT_ACCEPTED;
     }
 
-    /** Отклонить проект: аудит Accepted, org отказывается — проект остаётся Pending. */
-    private function canOrgDeclineProjectAfterAudit(User $user, Project $project): bool
-    {
-        return $this->canOrgAcceptProjectAfterAudit($user, $project);
-    }
+    // --- Организация: привязка и принятие после аудита ---
 
     /**
      * Привязать организацию к проекту: admin — любая org;
@@ -154,22 +158,8 @@ trait ChecksProjectAccess
         return true;
     }
 
-    /** Загрузка документов: staff с write-доступом или студент команды проекта. */
-    private function canUploadProjectDocuments(User $user, Project $project): bool
-    {
-        if ($this->canModifyResources($user) && $this->canWriteProject($user, $project)) {
-            return true;
-        }
-
-        if ($user->role === User::ROLE_STUDENT) {
-            return $this->studentBelongsToProjectTeam($user, $project);
-        }
-
-        return false;
-    }
-
-    /** Удаление документов: staff с write-доступом или студент команды проекта. */
-    private function canDeleteProjectDocuments(User $user, Project $project): bool
+    /** Загрузка и удаление документов: staff с write-доступом или студент команды проекта. */
+    private function canManageProjectDocuments(User $user, Project $project): bool
     {
         if ($this->canModifyResources($user) && $this->canWriteProject($user, $project)) {
             return true;
@@ -272,6 +262,8 @@ trait ChecksProjectAccess
             User::ROLE_ORGANIZATION_ADMIN,
         ], true);
     }
+
+    // --- Доступ к проекту: чтение, запись, видимость в списках ---
 
     /** Чтение проекта: активный статус + право по роли. */
     private function canAccessProject(User $user, Project $project): bool
@@ -414,29 +406,12 @@ trait ChecksProjectAccess
         ];
     }
 
-    /** Допустимые статусы при создании проекта — всегда только pending. */
-    private function creatableProjectStatusesForUser(User $user): array
-    {
-        return [Project::STATUS_PENGING];
-    }
-
     /** Допустимые типы программы проекта. */
     private function settableProgramTypes(): array
     {
         return [
             Project::PROGRAM_TYPE_A,
             Project::PROGRAM_TYPE_B,
-        ];
-    }
-
-    /** Роли, которые могут быть главным аудитором. */
-    private function auditorRoleIds(): array
-    {
-        return [
-            User::ROLE_ADMIN,
-            User::ROLE_ORGANIZATION_EMPLOYEE,
-            User::ROLE_ORGANIZATION_ADMIN,
-            User::ROLE_NTI_EMPLOYEE,
         ];
     }
 

@@ -58,7 +58,7 @@ class DocumentController extends Controller
         ]);
 
         $project = Project::findOrFail($data['project_id']);
-        abort_unless($this->canUploadProjectDocuments($user, $project), 403, 'Access denied');
+        abort_unless($this->canManageProjectDocuments($user, $project), 403, 'Access denied');
         $this->assertProjectAcceptsDocument($user, $project);
 
         $document = Document::create([
@@ -134,7 +134,7 @@ class DocumentController extends Controller
     {
         $user = $request->user();
         abort_unless(
-            $document->project && $this->canDeleteProjectDocuments($user, $document->project),
+            $document->project && $this->canManageProjectDocuments($user, $document->project),
             403,
             'Access denied'
         );

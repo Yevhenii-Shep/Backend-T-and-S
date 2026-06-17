@@ -378,7 +378,7 @@ class ProjectController extends Controller
     public function declineAfterAudit(Request $request, Project $project)
     {
         $user = $request->user();
-        abort_unless($this->canOrgDeclineProjectAfterAudit($user, $project), 403, 'Access denied');
+        abort_unless($this->canOrgAcceptProjectAfterAudit($user, $project), 403, 'Access denied');
 
         $project->update(['status' => Project::STATUS_PENGING]);
 
