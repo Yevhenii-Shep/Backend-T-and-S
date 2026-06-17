@@ -45,6 +45,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('projects/{project}/assign-category', [ProjectController::class, 'assignCategory']);
     Route::patch('projects/{project}/assign-team', [ProjectController::class, 'assignTeam']);
     Route::patch('projects/{project}/assign-organization', [ProjectController::class, 'assignOrganization']);
+    Route::patch('projects/{project}/accept-after-audit', [ProjectController::class, 'acceptAfterAudit']);
+    Route::patch('projects/{project}/decline-after-audit', [ProjectController::class, 'declineAfterAudit']);
     Route::apiResource('projects', ProjectController::class);
 
     Route::get('documents/{document}/download', [DocumentController::class, 'download']);
@@ -52,6 +54,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('milestones/{milestone}/status', [MilestoneController::class, 'updateStatus']);
     Route::apiResource('milestones', MilestoneController::class);
     Route::apiResource('evaluations', EvaluationController::class);
+    Route::patch('audit-events/{audit_event}/result', [AuditEventController::class, 'updateResult']);
     Route::apiResource('audit-events', AuditEventController::class);
 
     // Участники аудита

@@ -94,7 +94,7 @@ class ProjectController extends Controller
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
             'program_type' => ['required', 'integer', Rule::in($this->creatableProgramTypesForUser($user))],
             'category_id' => ['required', 'integer', 'exists:categories,id'],
-            'status' => ['required', 'integer', Rule::in($this->creatableProjectStatusesForUser($user))],
+            'status' => ['prohibited'],
             'description' => ['nullable', 'string'],
             'deadline' => ['nullable', 'date'],
         ]);
@@ -116,6 +116,8 @@ class ProjectController extends Controller
             abort_unless($teamId, 422, 'You must belong to an active team to create a project.');
             $data['team_id'] = $teamId;
         }
+
+        $data['status'] = Project::STATUS_PENGING;
 
         $project = Project::create($data);
 
@@ -341,6 +343,39 @@ class ProjectController extends Controller
         $this->assertValidOrganizationMentor($project, $mentorId);
 
         $project->update(['mentor_from_organization' => $mentorId]);
+
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
+        );
+    }
+
+    /**
+     * PATCH /api/projects/{project}/accept-after-audit — организация принимает проект после успешного аудита.
+     */
+    public function acceptAfterAudit(Request $request, Project $project)
+    {
+        $user = $request->user();
+        abort_unless($this->canOrgAcceptProjectAfterAudit($user, $project), 403, 'Access denied');
+
+        $project->update([
+            'status' => Project::STATUS_ACTIVE,
+            'organization_id' => $user->organization_id,
+        ]);
+
+        return new ProjectResource(
+            $project->load($this->projectDetailRelations())
+        );
+    }
+
+    /**
+     * PATCH /api/projects/{project}/decline-after-audit — организация отклоняет проект после успешного аудита.
+     */
+    public function declineAfterAudit(Request $request, Project $project)
+    {
+        $user = $request->user();
+        abort_unless($this->canOrgDeclineProjectAfterAudit($user, $project), 403, 'Access denied');
+
+        $project->update(['status' => Project::STATUS_PENGING]);
 
         return new ProjectResource(
             $project->load($this->projectDetailRelations())

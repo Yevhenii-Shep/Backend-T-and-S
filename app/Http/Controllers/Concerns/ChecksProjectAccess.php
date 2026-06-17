@@ -68,20 +68,10 @@ trait ChecksProjectAccess
         return false;
     }
 
-    /**
-     * Назначить первый аудит: admin, NTI или org admin для доступного проекта.
-     */
+    /** Назначить аудит: admin или сотрудник NTI. */
     private function canScheduleProjectAudit(User $user, Project $project): bool
     {
-        if ($user->role === User::ROLE_ADMIN || $user->role === User::ROLE_NTI_EMPLOYEE) {
-            return true;
-        }
-
-        if ($user->role === User::ROLE_ORGANIZATION_ADMIN && $user->organization_id) {
-            return $this->canOrgAccessProject($user, $project);
-        }
-
-        return false;
+        return in_array($user->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true);
     }
 
     /** Главный аудитор (или admin) выставляет итог аудита после его завершения. */
@@ -92,6 +82,51 @@ trait ChecksProjectAccess
         }
 
         return $auditEvent->main_auditor && (int) $auditEvent->main_auditor === (int) $user->id;
+    }
+
+    /** Завершённый аудит с итогом (один аудит на проект). */
+    private function getCompletedAudit(Project $project): ?AuditEvent
+    {
+        return $project->auditEvents()
+            ->whereNotNull('result')
+            ->where('end_time', '<=', now())
+            ->first();
+    }
+
+    /** Org может принять/отклонить проект после итога аудита. */
+    private function canOrgDecideProjectAfterAudit(User $user, Project $project): bool
+    {
+        if (!in_array($user->role, [User::ROLE_ORGANIZATION_ADMIN, User::ROLE_ORGANIZATION_EMPLOYEE], true)) {
+            return false;
+        }
+
+        if (!$user->organization_id || !$this->canOrgAccessProject($user, $project)) {
+            return false;
+        }
+
+        if ($project->status !== Project::STATUS_PENGING) {
+            return false;
+        }
+
+        return $this->getCompletedAudit($project) !== null;
+    }
+
+    /** Принять проект: аудит Accepted, проект Pending. */
+    private function canOrgAcceptProjectAfterAudit(User $user, Project $project): bool
+    {
+        if (!$this->canOrgDecideProjectAfterAudit($user, $project)) {
+            return false;
+        }
+
+        $audit = $this->getCompletedAudit($project);
+
+        return $audit && (int) $audit->result === AuditEvent::RESULT_ACCEPTED;
+    }
+
+    /** Отклонить проект: аудит Accepted, org отказывается — проект остаётся Pending. */
+    private function canOrgDeclineProjectAfterAudit(User $user, Project $project): bool
+    {
+        return $this->canOrgAcceptProjectAfterAudit($user, $project);
     }
 
     /**
@@ -379,21 +414,10 @@ trait ChecksProjectAccess
         ];
     }
 
-    /** Допустимые статусы при создании проекта по роли. */
+    /** Допустимые статусы при создании проекта — всегда только pending. */
     private function creatableProjectStatusesForUser(User $user): array
     {
-        if (in_array($user->role, [
-            User::ROLE_STUDENT,
-            User::ROLE_ORGANIZATION_ADMIN,
-            User::ROLE_ORGANIZATION_EMPLOYEE,
-        ], true)) {
-            return [
-                Project::STATUS_PENGING,
-                Project::STATUS_ACTIVE,
-            ];
-        }
-
-        return $this->settableProjectStatuses();
+        return [Project::STATUS_PENGING];
     }
 
     /** Допустимые типы программы проекта. */

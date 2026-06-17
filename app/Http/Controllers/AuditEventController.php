@@ -116,9 +116,28 @@ class AuditEventController extends Controller
 
         $auditEvent->update($data);
 
-        if (array_key_exists('result', $data) && $data['result'] !== null) {
-            $this->applyAuditResultToProject($auditEvent->fresh(['project']));
-        }
+        return new AuditEventResource(
+            $auditEvent->load(['project', 'mainAuditor', 'participants.user'])
+        );
+    }
+
+    /**
+     * PATCH /api/audit-events/{audit_event}/result — главный аудитор фиксирует итог аудита.
+     */
+    public function updateResult(Request $request, AuditEvent $auditEvent)
+    {
+        $user = $request->user();
+        abort_unless($this->canAccessAudit($user, $auditEvent), 403, 'Access denied');
+        abort_unless($this->canSetAuditResult($user, $auditEvent), 403, 'Access denied');
+
+        $data = $request->validate([
+            'result' => ['required', 'integer', Rule::in([AuditEvent::RESULT_ACCEPTED, AuditEvent::RESULT_DECLINED])],
+        ]);
+
+        $this->assertResultOnlyAfterEnd($auditEvent->end_time);
+        $this->assertAuditResultNotFinal($auditEvent);
+
+        $auditEvent->update(['result' => $data['result']]);
 
         return new AuditEventResource(
             $auditEvent->load(['project', 'mainAuditor', 'participants.user'])
@@ -268,29 +287,12 @@ class AuditEventController extends Controller
         }
     }
 
-    /** Принять / отклонить проект по итогу аудита. */
-    private function applyAuditResultToProject(AuditEvent $auditEvent): void
-    {
-        $project = $auditEvent->project;
-
-        if (!$project || $auditEvent->result === null) {
-            return;
-        }
-
-        if ($auditEvent->result === AuditEvent::RESULT_ACCEPTED) {
-            $project->update(['status' => Project::STATUS_ACTIVE]);
-
-            return;
-        }
-
-        if ($auditEvent->result === AuditEvent::RESULT_DECLINED) {
-            $project->update(['status' => Project::STATUS_PENGING]);
-        }
-    }
-
-    /** Главный/участник-аудитор: роль auditor + org проекта (admin/NTI — без ограничения org). */
-    private function assertAuditorBelongsToProject(int $userId, ?Project $project, string $field = 'main_auditor'): void
-    {
+    /** Главный аудитор: admin/NTI или любой сотрудник/админ любой организации. */
+    private function assertAuditorBelongsToProject(
+        int $userId,
+        ?Project $project,
+        string $field = 'main_auditor'
+    ): void {
         $auditor = User::find($userId);
 
         if (!$auditor) {
@@ -299,25 +301,19 @@ class AuditEventController extends Controller
             ]);
         }
 
-        if (!in_array($auditor->role, $this->auditorRoleIds(), true)) {
-            throw ValidationException::withMessages([
-                $field => ['Invalid auditor role.'],
-            ]);
-        }
-
         if (in_array($auditor->role, [User::ROLE_ADMIN, User::ROLE_NTI_EMPLOYEE], true)) {
             return;
         }
 
-        if (!$project || !$project->organization_id) {
+        if (!in_array($auditor->role, [User::ROLE_ORGANIZATION_EMPLOYEE, User::ROLE_ORGANIZATION_ADMIN], true)) {
             throw ValidationException::withMessages([
-                $field => ['Organization auditor can only be assigned to a project with an organization.'],
+                $field => ['Auditor must be an organization employee or admin.'],
             ]);
         }
 
-        if ((int) $auditor->organization_id !== (int) $project->organization_id) {
+        if (!$auditor->organization_id) {
             throw ValidationException::withMessages([
-                $field => ['Auditor must belong to the project organization.'],
+                $field => ['Auditor must belong to an organization.'],
             ]);
         }
     }
