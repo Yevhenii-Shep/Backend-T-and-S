@@ -89,7 +89,7 @@ trait ChecksProjectAccess
     {
         return $project->auditEvents()
             ->whereNotNull('result')
-            ->where('end_time', '<=', now())
+            //->where('end_time', '<=', now())
             ->first();
     }
 

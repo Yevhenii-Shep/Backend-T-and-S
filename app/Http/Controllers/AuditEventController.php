@@ -419,9 +419,11 @@ class AuditEventController extends Controller
             return;
         }
 
+        /*
         if (isset($data['result']) && $data['result'] !== null) {
             $this->assertResultOnlyAfterEnd($data['end_time']);
         }
+        */
     }
 
     /** Не-admin не может сдвинуть start_time в прошлое. */
@@ -463,11 +465,13 @@ class AuditEventController extends Controller
 
     /** result допустим только когда аудит по расписанию уже завершён. */
     private function assertResultOnlyAfterEnd(mixed $endTime): void
-    {
+    {   
+        /*
         if (Carbon::parse($endTime)->gt(now())) {
             throw ValidationException::withMessages([
                 'result' => ['Result can only be set after the audit has ended.'],
             ]);
         }
+        */
     }
 }
