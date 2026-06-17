@@ -52,7 +52,7 @@ class AuditEventController extends Controller
         $data = $request->validate($this->storeRules($user));
 
         $project = Project::findOrFail($data['project_id']);
-        abort_unless($this->canScheduleProjectAudit($user, $project), 403, 'Access denied');
+        abort_unless($this->isNtiStaff($user), 403, 'Access denied');
         abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
         $this->assertProjectAcceptsAudit($user, $project);
         $this->assertProjectPendingForAudit($project);
@@ -105,12 +105,12 @@ class AuditEventController extends Controller
                 $this->assertAuditResultNotFinal($auditEvent);
             }
         } else {
-            abort_unless($this->canScheduleProjectAudit($user, $auditEvent->project), 403, 'Access denied');
+            abort_unless($this->isNtiStaff($user), 403, 'Access denied');
             $this->assertScheduleOnUpdate($user, $data, $auditEvent);
         }
 
         if (isset($data['main_auditor'])) {
-            abort_unless($this->canScheduleProjectAudit($user, $auditEvent->project), 403, 'Access denied');
+            abort_unless($this->isNtiStaff($user), 403, 'Access denied');
             $this->assertAuditorBelongsToProject($data['main_auditor'], $auditEvent->project, 'main_auditor');
         }
 

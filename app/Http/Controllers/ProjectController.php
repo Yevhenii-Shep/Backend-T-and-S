@@ -294,7 +294,7 @@ class ProjectController extends Controller
     public function assignCategory(Request $request, Project $project)
     {
         $user = $request->user();
-        abort_unless($this->canAdminAssignProjectRelations($user), 403, 'Access denied');
+        abort_unless($this->isAdmin($user), 403, 'Access denied');
         abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
 
         $data = $request->validate([
@@ -314,7 +314,7 @@ class ProjectController extends Controller
     public function assignNtiMentor(Request $request, Project $project)
     {
         $user = $request->user();
-        abort_unless($this->canAssignNtiMentor($user), 403, 'Access denied');
+        abort_unless($this->isNtiStaff($user), 403, 'Access denied');
         abort_unless($this->canStaffAccessProject($user, $project), 403, 'Access denied');
 
         $data = $request->validate([
