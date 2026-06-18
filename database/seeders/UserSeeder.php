@@ -77,6 +77,17 @@ class UserSeeder extends Seeder
         ]);
 
         User::create([
+            'name'=> 'Apple Admin',
+            'role' => User::ROLE_ORGANIZATION_ADMIN,
+            'email'=> 'apple_admin@apple.com',
+            'organization_id'=> $apple->id,
+            'birth_date' => '2002-03-11',
+            'password' => 'password',
+            'phone' => '+222222',
+            'avatar_path' => null,
+        ]);
+
+        User::create([
             'name'=> 'Test organization Admin',
             'role' => User::ROLE_ORGANIZATION_ADMIN,
             'email'=> 'test_org_admin@gmail.com',

@@ -22,7 +22,7 @@ class DocumentSeeder extends Seeder
         Document::create([
             'project_id' => $aiProject->id,
             'name' => 'Technical Specification',
-            'description' => 'fkafksjfdkafk',
+            'description' => 'The best doc in the world',
             'file_path' => 'documents/technical.pdf',
         ]);
 

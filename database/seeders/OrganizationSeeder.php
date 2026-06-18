@@ -18,10 +18,10 @@ class OrganizationSeeder extends Seeder
             'slug' => 'apple',
             'logo_path' => null,
             'description' => 'Demo organization',
-            'website_url' => null,
+            'website_url' => "https://www.apple.com",
             'ico' => '11111111',
-            'phone' => null,
-            'email' => 'apple@test.com',
+            'phone' => "+11111111",
+            'email' => 'apple@icloud.com',
             'sector' => 'Technology',
         ]);
         Organization::create([
@@ -29,10 +29,10 @@ class OrganizationSeeder extends Seeder
             'slug' => 'google',
             'logo_path' => null,
             'description' => 'Demo organization 2',
-            'website_url' => null,
+            'website_url' => "https://about.google",
             'ico' => '22222222',
-            'phone' => null,
-            'email' => 'google@demo.com',
+            'phone' => "+22222222",
+            'email' => 'google@gmail.com',
             'sector' => 'Technology',
         ]);
     }

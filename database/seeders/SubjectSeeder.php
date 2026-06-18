@@ -20,7 +20,7 @@ class SubjectSeeder extends Seeder
 
         Subject::create([
             'name' => 'Frontend Technologies',
-            'description' => 'Vue js and more',
+            'description' => 'Vue.js and more',
         ]);
 
         Subject::create([

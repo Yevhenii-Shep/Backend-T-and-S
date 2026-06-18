@@ -12,6 +12,7 @@ class AuditEventSeeder extends Seeder
 {
     public function run(): void
     {
+        /*
         $aiProject = Project::where('name', 'AI Platform')->first();
         $dbProject = Project::where('name', 'Big BD creation')->first();
         $finishedProject = Project::where('name', 'Uber(finished)')->first();
@@ -119,5 +120,6 @@ class AuditEventSeeder extends Seeder
             'audit_event_id' => $audit3->id,
             'role' => AuditParticipant::ROLE_CONTRIBUTOR,
         ]);
+        */
     }
 }
