@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Notifications\PasswordChangedNotification;
+use App\Notifications\WelcomeNotification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -39,6 +41,8 @@ class AuthController extends Controller
         ]);
 
         $token = $user->createToken('api')->plainTextToken;
+
+        $user->notify(new WelcomeNotification());
 
         return response()->json([
             'token' => $token,
@@ -114,6 +118,8 @@ class AuthController extends Controller
         }
 
         $user->update(['password' => $data['password']]);
+
+        $user->notify(new PasswordChangedNotification());
 
         return response()->json([
             'message' => 'Password updated.',

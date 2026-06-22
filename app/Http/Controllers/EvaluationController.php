@@ -7,7 +7,10 @@ use App\Http\Resources\EvaluationResource;
 use App\Models\Evaluation;
 use App\Models\Project;
 use App\Models\User;
+use App\Notifications\EvaluationReceivedNotification;
+use App\Support\ProjectTeamRecipients;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -71,8 +74,14 @@ class EvaluationController extends Controller
         }
 
         $evaluation = Evaluation::create($data);
+        $evaluation->load(['project', 'evaluator']);
 
-        return (new EvaluationResource($evaluation->load(['project', 'evaluator'])))
+        Notification::send(
+            ProjectTeamRecipients::forProject($evaluation->project),
+            new EvaluationReceivedNotification($evaluation)
+        );
+
+        return (new EvaluationResource($evaluation))
             ->response()
             ->setStatusCode(201);
     }
