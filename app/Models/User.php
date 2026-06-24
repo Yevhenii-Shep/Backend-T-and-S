@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,7 +12,7 @@ use Laravel\Sanctum\HasApiTokens;
 /**
  * Пользователь. HasApiTokens — выдача Bearer-токенов для API (Sanctum).
  */
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
     // Sanctum: createToken() / currentAccessToken() для login и logout
     use HasApiTokens, HasFactory, Notifiable, SoftDeletes;

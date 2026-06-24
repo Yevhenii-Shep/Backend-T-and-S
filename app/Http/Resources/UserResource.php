@@ -30,6 +30,7 @@ class UserResource extends JsonResource
                 : null,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
+            'email_verified_at' => $this->email_verified_at,
 
             'organization' => OrganizationResource::make($this->whenLoaded('organization')),
             'subjects' => SubjectResource::collection($this->whenLoaded('subjects')),

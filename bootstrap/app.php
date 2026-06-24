@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Проверка роли на маршруте: ->middleware('role:1,4') (ID из User::ROLE_*)
         $middleware->alias([
             'role' => \App\Http\Middleware\CheckRole::class,
+            'verified.email' => \App\Http\Middleware\EnsureEmailIsVerified::class,
         ]);
 
         // API без сессии: не редиректить на route('login'), а отдавать 401 JSON.
