@@ -11,6 +11,7 @@ use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\TeamController;
 use App\Http\Controllers\UserController;
+use GuzzleHttp\Middleware;
 use Illuminate\Support\Facades\Route;
 
 
@@ -18,22 +19,33 @@ use Illuminate\Support\Facades\Route;
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:10,1');
 
-// Текущий пользователь по Bearer-токену (дублирует /me, оставлен для совместимости)
-Route::get('/user', [AuthController::class, 'me'])->middleware('auth:sanctum');
+// Верификация емейла
+Route::get('/email/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])->middleware(['signed'])->name('verification.verify');
 
-
-// Все маршруты ниже требуют заголовок: Authorization: Bearer {token}
+// маршруты которые не требуют верфикацию емейла
 Route::middleware('auth:sanctum')->group(function () {
-    Route::post('/logout', [AuthController::class, 'logout']);
     Route::get('/me', [AuthController::class, 'me']);
+     Route::post('/logout', [AuthController::class, 'logout']);
+
+    // Текущий пользователь по Bearer-токену (дублирует /me, оставлен для совместимости)
+    Route::get('/user', [AuthController::class, 'me']);
+
     Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('throttle:5,1');
 
+    // Повторная отпрвака письма на верификацию емейла
+    Route::post('/email/resend', [AuthController::class, 'resendEmailVerification']);
+
+    Route::apiResource('users', UserController::class);
     Route::post('users/me/avatar', [UserController::class, 'updateAvatar']);
     Route::delete('users/me', [UserController::class, 'destroyMe']);
 
-    Route::apiResource('users', UserController::class);
 
     Route::get('users/{user}/subjects', [UserController::class, 'indexSubjects']);
+});
+
+
+// Все маршруты ниже требуют верификацию email
+Route::middleware(['auth:sanctum', 'verified.email'])->group(function () {
     Route::post('users/{user}/subjects', [UserController::class, 'storeSubject']);
     Route::patch('users/{user}/subjects/{subject}', [UserController::class, 'updateSubject']);
     Route::delete('users/{user}/subjects/{subject}', [UserController::class, 'destroySubject']);

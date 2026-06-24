@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Http\Resources\UserResource;
 use App\Models\User;
+use App\Notifications\PasswordChangedNotification;
+use App\Notifications\WelcomeNotification;
+use Illuminate\Foundation\Auth\EmailVerificationRequest;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -38,12 +41,47 @@ class AuthController extends Controller
             'organization_id' => null,
         ]);
 
+        /*
+        $user->notify(new WelcomeNotification());
+        */
+
+        $user->sendEmailVerificationNotification();
         $token = $user->createToken('api')->plainTextToken;
 
         return response()->json([
             'token' => $token,
             'user' => new UserResource($user->load('organization')),
+            'message' => 'Please verify your email',
         ], 201);
+    }
+    
+    public function verifyEmail(Request $request, $id, $hash)
+    {
+        $user = User::findOrFail($id);
+
+        if (!hash_equals((string) $hash, sha1($user->getEmailForVerification()))) {
+            abort(403);
+        }
+
+        if (!$user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+        }
+
+        $user->notify(new WelcomeNotification());
+        return redirect(config('app.frontend_url').'/login?verified=1');
+    }
+
+    public function resendEmailVerification(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if (!$user->hasVerifiedEmail()) {
+            $user->sendEmailVerificationNotification();
+        }
+
+        return response()->json([
+            'message' => 'Verification email sent.',
+        ]);
     }
 
     /**
@@ -114,6 +152,8 @@ class AuthController extends Controller
         }
 
         $user->update(['password' => $data['password']]);
+
+        $user->notify(new PasswordChangedNotification());
 
         return response()->json([
             'message' => 'Password updated.',

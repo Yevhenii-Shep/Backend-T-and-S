@@ -7,7 +7,10 @@ use App\Http\Resources\ProjectResource;
 use App\Models\Project;
 use App\Models\Team;
 use App\Models\User;
+use App\Notifications\ProjectAcceptedNotification;
+use App\Support\ProjectTeamRecipients;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -367,9 +370,14 @@ class ProjectController extends Controller
             'organization_id' => $user->organization_id,
         ]);
 
-        return new ProjectResource(
-            $project->load($this->projectDetailRelations())
+        $project->refresh()->load($this->projectDetailRelations());
+
+        Notification::send(
+            ProjectTeamRecipients::forProject($project),
+            new ProjectAcceptedNotification($project)
         );
+
+        return new ProjectResource($project);
     }
 
     /**
